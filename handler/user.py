@@ -18,9 +18,12 @@ async def start_cmd(client: Client, message: Message):
         [InlineKeyboardButton("❓ Bantuan", callback_data="help")]
     ])
 
-    await message.reply_text(
-        "👋 <b>Selamat Datang Di Naka VIP</b>\n\n"
-        "Pilih menu di bawah untuk melihat daftar Channel VIP.",
+    await message.reply_photo(
+        photo="assets/welcome.jpg",
+        caption=(
+            "👋 <b>Selamat Datang Di Naka VIP</b>\n\n"
+            "Pilih menu di bawah untuk melihat daftar Channel VIP."
+        ),
         reply_markup=keyboard
     )
 
@@ -32,7 +35,7 @@ async def show_channels(callback_query: CallbackQuery):
     channels = await get_channels()
 
     if not channels:
-        await callback_query.answer("❌ Belum ada Channel VIP.")
+        await callback_query.answer("❌ Belum ada Channel VIP.", show_alert=True)
         return
 
     keyboard = []
@@ -46,8 +49,8 @@ async def show_channels(callback_query: CallbackQuery):
 
     keyboard.append([InlineKeyboardButton("⬅️ Kembali", callback_data="home")])
 
-    await callback_query.edit_message_text(
-        text,
+    await callback_query.edit_message_caption(
+        caption=text,
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -60,15 +63,17 @@ async def show_help(callback_query: CallbackQuery):
         [InlineKeyboardButton("⬅️ Kembali", callback_data="home")]
     ])
 
-    await callback_query.edit_message_text(
-        "❓ <b>Pusat Bantuan</b>\n\n"
-        "Cara membeli VIP:\n\n"
-        "1. Tekan <b>🛒 Beli VIP</b>.\n"
-        "2. Pilih Channel VIP.\n"
-        "3. Lakukan pembayaran melalui QRIS.\n"
-        "4. Tekan <b>✅ Cek Pembayaran</b>.\n"
-        "5. Jika pembayaran berhasil, bot akan otomatis mengirimkan akses Channel VIP.\n\n"
-        "Jika mengalami kendala, silakan hubungi admin.",
+    await callback_query.edit_message_caption(
+        caption=(
+            "❓ <b>Pusat Bantuan</b>\n\n"
+            "Cara membeli VIP:\n\n"
+            "1. Tekan <b>🛒 Beli VIP</b>.\n"
+            "2. Pilih Channel VIP.\n"
+            "3. Lakukan pembayaran melalui QRIS.\n"
+            "4. Tekan <b>✅ Cek Pembayaran</b>.\n"
+            "5. Jika pembayaran berhasil, bot akan otomatis mengirimkan akses Channel VIP.\n\n"
+            "Jika mengalami kendala, silakan hubungi admin."
+        ),
         reply_markup=keyboard
     )
 
@@ -90,9 +95,16 @@ async def user_callback(client: Client, callback_query: CallbackQuery):
             [InlineKeyboardButton("🛒 Beli VIP", callback_data="vip")],
             [InlineKeyboardButton("❓ Bantuan", callback_data="help")]
         ])
-        await callback_query.edit_message_text(
-            "👋 <b>Selamat Datang Di Naka VIP</b>\n\n"
-            "Pilih menu di bawah untuk melihat daftar Channel VIP.",
+        
+        # Mengembalikan ke pesan foto awal
+        await callback_query.message.delete()
+        await client.send_photo(
+            chat_id=callback_query.message.chat.id,
+            photo="assets/welcome.jpg",
+            caption=(
+                "👋 <b>Selamat Datang Di Naka VIP</b>\n\n"
+                "Pilih menu di bawah untuk melihat daftar Channel VIP."
+            ),
             reply_markup=keyboard
         )
 
