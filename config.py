@@ -4,6 +4,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8643518852:AAEFwcoNBY3mSxarFWe9d7VCf1AlqLI1pNk")
+API_ID = int(os.getenv("API_ID", "28932643"))
+
+API_HASH = os.getenv("API_HASH", "3fb38bb53a7d33fb42ea208c6f77830b")
+
 OWNER_ID = int(os.getenv("OWNER_ID", 1816904396))
 DB_NAME = os.getenv("DB_NAME", "naka.db")
 LOGGER_GROUP_ID = int(os.environ.get("LOG_GROUP_ID", -1004477347087))
