@@ -1,0 +1,119 @@
+from pyrogram import Client, filters
+from pyrogram.types import (
+    Message,
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+)
+from database import get_channels, get_order_by_user
+
+# ==================================
+# START
+# ==================================
+
+@Client.on_message(filters.command("start"))
+async def start_cmd(client: Client, message: Message):
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🛒 Beli VIP", callback_data="vip")],
+        [InlineKeyboardButton("❓ Bantuan", callback_data="help")]
+    ])
+
+    await message.reply_text(
+        "👋 <b>Selamat Datang Di Naka VIP</b>\n\n"
+        "Pilih menu di bawah untuk melihat daftar Channel VIP.",
+        reply_markup=keyboard
+    )
+
+# ==================================
+# LIST CHANNEL
+# ==================================
+
+async def show_channels(callback_query: CallbackQuery):
+    channels = await get_channels()
+
+    if not channels:
+        await callback_query.answer("❌ Belum ada Channel VIP.")
+        return
+
+    keyboard = []
+    text = "📦 <b>DAFTAR CHANNEL VIP</b>\n\n"
+
+    for channel in channels:
+        text += f"📺 <b>{channel['name']}</b>\n💰 Rp {channel['price']:,}\n\n"
+        keyboard.append([
+            InlineKeyboardButton(f"🛒 {channel['name']}", callback_data=f"buy:{channel['id']}")
+        ])
+
+    keyboard.append([InlineKeyboardButton("⬅️ Kembali", callback_data="home")])
+
+    await callback_query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+# ==================================
+# HELP
+# ==================================
+
+async def show_help(callback_query: CallbackQuery):
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⬅️ Kembali", callback_data="home")]
+    ])
+
+    await callback_query.edit_message_text(
+        "❓ <b>Pusat Bantuan</b>\n\n"
+        "Cara membeli VIP:\n\n"
+        "1. Tekan <b>🛒 Beli VIP</b>.\n"
+        "2. Pilih Channel VIP.\n"
+        "3. Lakukan pembayaran melalui QRIS.\n"
+        "4. Tekan <b>✅ Cek Pembayaran</b>.\n"
+        "5. Jika pembayaran berhasil, bot akan otomatis mengirimkan akses Channel VIP.\n\n"
+        "Jika mengalami kendala, silakan hubungi admin.",
+        reply_markup=keyboard
+    )
+
+# ==================================
+# CALLBACK HANDLER
+# ==================================
+
+@Client.on_callback_query(filters.regex(r"^(vip|home|help)$"))
+async def user_callback(client: Client, callback_query: CallbackQuery):
+    data = callback_query.data
+    await callback_query.answer()
+
+    if data == "vip":
+        await show_channels(callback_query)
+    elif data == "help":
+        await show_help(callback_query)
+    elif data == "home":
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🛒 Beli VIP", callback_data="vip")],
+            [InlineKeyboardButton("❓ Bantuan", callback_data="help")]
+        ])
+        await callback_query.edit_message_text(
+            "👋 <b>Selamat Datang Di Naka VIP</b>\n\n"
+            "Pilih menu di bawah untuk melihat daftar Channel VIP.",
+            reply_markup=keyboard
+        )
+
+# ==================================
+# MY ORDER
+# ==================================
+
+@Client.on_message(filters.command("myorder"))
+async def myorder_cmd(client: Client, message: Message):
+    order = await get_order_by_user(message.from_user.id)
+
+    if not order:
+        await message.reply_text("📭 Belum ada transaksi.")
+        return
+
+    status = order['status']
+    emoji = {"pending": "🟡", "paid": "🟢", "expired": "🔴", "cancel": "⚫"}.get(status, "❔")
+
+    await message.reply_text(
+        "📄 <b>Order Terakhir</b>\n\n"
+        f"🆔 {order['transaction_id']}\n"
+        f"💰 Rp {order['unique_amount']:,}\n"
+        f"{emoji} Status : <b>{status.upper()}</b>"
+    )
