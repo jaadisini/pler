@@ -10,6 +10,7 @@ WORKDIR /app
 # Menginstal dependensi sistem yang diperlukan (termasuk libffi dan musl untuk TGCrypto)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    git \
     sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 # Copy requirements terlebih dahulu untuk memanfaatkan Docker Cache
