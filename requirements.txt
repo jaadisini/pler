@@ -1,5 +1,4 @@
-
-pyrogram
+git+https://github.com/jaadisini/pyrogramy
 tgcrypto
 aiohttp
 aiosqlite
