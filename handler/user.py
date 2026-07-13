@@ -8,6 +8,7 @@ from pyrogram.types import (
 )
 from database import get_channels, get_order_by_user
 from app import app
+
 # ==================================
 # START
 # ==================================
@@ -15,8 +16,9 @@ from app import app
 @app.on_message(filters.command("start"))
 async def start_cmd(client: Client, message: Message):
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🛒 Beli VIP", callback_data="vip", enums.ButtonStyle.SUCCESS)],
-        [InlineKeyboardButton("❓ Bantuan", callback_data="help", enums.ButtonStyle.PRIMARY)]
+        # Gunakan parameter style= secara eksplisit
+        [InlineKeyboardButton("🛒 Beli VIP", callback_data="vip", style=enums.ButtonStyle.SUCCESS)],
+        [InlineKeyboardButton("❓ Bantuan", callback_data="help", style=enums.ButtonStyle.PRIMARY)]
     ])
 
     await message.reply_photo(
@@ -45,10 +47,15 @@ async def show_channels(callback_query: CallbackQuery):
     for channel in channels:
         text += f"📺 <b>{channel['name']}</b>\n💰 Rp {channel['price']:,}\n\n"
         keyboard.append([
-            InlineKeyboardButton(f"🛒 {channel['name']}", callback_data=f"buy:{channel['id']}", enums.ButtonStyle.SUCCESS)
+            InlineKeyboardButton(
+                f"🛒 {channel['name']}", 
+                callback_data=f"buy:{channel['id']}", 
+                style=enums.ButtonStyle.SUCCESS # Tambahkan style=
+            )
         ])
 
-    keyboard.append([InlineKeyboardButton("⬅️ Kembali", callback_data="home")])
+    # Tambahkan style sekunder/danger untuk tombol kembali
+    keyboard.append([InlineKeyboardButton("⬅️ Kembali", callback_data="home", style=enums.ButtonStyle.DANGER)])
 
     await callback_query.edit_message_caption(
         caption=text,
@@ -61,7 +68,7 @@ async def show_channels(callback_query: CallbackQuery):
 
 async def show_help(callback_query: CallbackQuery):
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("⬅️ Kembali", callback_data="home")]
+        [InlineKeyboardButton("⬅️ Kembali", callback_data="home", style=enums.ButtonStyle.DANGER)]
     ])
 
     await callback_query.edit_message_caption(
@@ -92,9 +99,10 @@ async def user_callback(client: Client, callback_query: CallbackQuery):
     elif data == "help":
         await show_help(callback_query)
     elif data == "home":
+        # Samakan dengan style pada fungsi start_cmd
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🛒 Beli VIP", callback_data="vip")],
-            [InlineKeyboardButton("❓ Bantuan", callback_data="help")]
+            [InlineKeyboardButton("🛒 Beli VIP", callback_data="vip", style=enums.ButtonStyle.SUCCESS)],
+            [InlineKeyboardButton("❓ Bantuan", callback_data="help", style=enums.ButtonStyle.PRIMARY)]
         ])
         
         # Mengembalikan ke pesan foto awal
