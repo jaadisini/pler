@@ -50,7 +50,7 @@ async def add_channel(
     channel_id,
     price,
     description,
-    photo_path,  # <-- Menerima parameter foto baru
+    photo_path,  # Menerima parameter foto baru
 ):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute(
@@ -267,3 +267,21 @@ async def delete_expired_orders():
             """
         )
         await db.commit()
+
+
+# ==========================================
+# USER & BROADCAST DATA (Fitur Baru)
+# ==========================================
+
+async def get_all_users():
+    """Mengambil semua ID user unik yang terdaftar di riwayat transaksi untuk broadcast."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute(
+            """
+            SELECT DISTINCT user_id 
+            FROM orders
+            """
+        )
+        rows = await cursor.fetchall()
+        # Mengembalikan list flat berupa integer [123456, 789101, ...]
+        return [row[0] for row in rows]
