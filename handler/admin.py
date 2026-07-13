@@ -11,7 +11,7 @@ from database import (
     get_channels,
     delete_channel,
     update_price,
-    get_all_users,  # Pastikan fungsi ini sudah ditambahkan di database.py
+    get_all_users,  # Mengambil semua user dari tabel 'users' yang pernah /start
 )
 
 # State management untuk multi-step form, restore, dan broadcast
@@ -29,7 +29,6 @@ admin_filter = filters.user(OWNER_ID)
 
 @app.on_message(filters.command("addchannel") & admin_filter)
 async def add_channel_cmd(client: Client, message: Message):
-    # Set state awal untuk menerima teks detail channel
     ADMIN_STATE[message.from_user.id] = {"state": "ADD_CHANNEL_TEXT"}
     await message.reply_text(
         "📝 **Langkah 1:** Kirim detail channel dengan format berikut:\n\n"
@@ -51,7 +50,6 @@ async def admin_text(client: Client, message: Message):
     if not state_data:
         return
 
-    # Menangani input teks saat menambah channel
     if state_data.get("state") == "ADD_CHANNEL_TEXT":
         try:
             data = message.text.split("\n")
@@ -67,7 +65,6 @@ async def admin_text(client: Client, message: Message):
             channel_name = chat.title
             username = chat.username or ""
 
-            # Simpan data teks sementara ke state dan lanjut ke langkah foto
             ADMIN_STATE[user_id] = {
                 "state": "ADD_CHANNEL_PHOTO",
                 "channel_name": channel_name,
@@ -102,23 +99,20 @@ async def admin_photo(client: Client, message: Message):
         return
 
     try:
-        # Buat folder assets jika belum dibuat di server
-        os.makedirs("assets", exist_ok=True)
+        telegram_photo_id = message.photo.file_id
         
-        # Simpan file secara lokal dengan penamaan ID channel yang unik
+        os.makedirs("assets", exist_ok=True)
         photo_filename = f"assets/channel_{state_data['channel_id']}.jpg"
         await message.download(file_name=photo_filename)
 
-        # Simpan data lengkap ke database (termasuk path foto)
         await add_channel(
             name=state_data["channel_name"], 
             channel_id=str(state_data["channel_id"]), 
             price=state_data["price"], 
             description=state_data["description"],
-            photo_path=photo_filename  
+            photo_path=telegram_photo_id  
         )
 
-        # Bersihkan state admin
         ADMIN_STATE.pop(user_id, None)
 
         await message.reply_text(
@@ -127,7 +121,7 @@ async def admin_photo(client: Client, message: Message):
             f"🆔 Channel ID: `{state_data['channel_id']}`\n"
             f"🔗 Username: @{state_data['username'] if state_data['username'] else '-'}\n"
             f"💰 Harga: Rp {state_data['price']:,}\n"
-            f"🖼 Path Foto: `{photo_filename}`"
+            f"🖼 Photo ID: `{telegram_photo_id[:25]}...`"
         )
         
     except Exception as e:
@@ -208,14 +202,14 @@ async def backup_cmd(client: Client, message: Message):
         await message.reply_document(
             document=DB_NAME,
             file_name="database_backup.db",
-            caption="✅ **Backup database berhasil dibuat.**\n\nSimpan berkas `.db` ini baik-baik."
+            caption="✅ **Backup database berhasil dibuat.**"
         )
     except Exception as e:
         await message.reply_text(f"❌ Backup gagal dikirim: {e}")
 
 
 # =====================================
-# RESTORE DATABASE (Memicu State)
+# RESTORE DATABASE
 # =====================================
 
 @app.on_message(filters.command("restore") & admin_filter & filters.private)
@@ -229,10 +223,6 @@ async def restore_cmd(client: Client, message: Message):
     )
 
 
-# =====================================
-# CANCEL RESTORE
-# =====================================
-
 @app.on_message(filters.command("cancel_restore") & admin_filter & filters.private)
 async def cancel_restore_cmd(client: Client, message: Message):
     user_id = message.from_user.id
@@ -243,10 +233,6 @@ async def cancel_restore_cmd(client: Client, message: Message):
         await message.reply_text("Anda tidak sedang berada dalam mode restore database.")
 
 
-# =====================================
-# RECEIVE DATABASE FILE (Eksekusi Dokumen)
-# =====================================
-
 @app.on_message(filters.document & admin_filter & filters.private)
 async def receive_restore_file(client: Client, message: Message):
     user_id = message.from_user.id
@@ -255,7 +241,6 @@ async def receive_restore_file(client: Client, message: Message):
         return
 
     document = message.document
-
     if not document.file_name or not document.file_name.endswith(".db"):
         await message.reply_text("❌ File ditolak! Ekstensi file wajib berupa `.db`.")
         return
@@ -264,35 +249,26 @@ async def receive_restore_file(client: Client, message: Message):
     temp_file_path = os.path.abspath("restore_temp.db")
 
     try:
-        # Unduh file dan ambil path kembalian dari Pyrogram secara absolut
         downloaded_path = await message.download(file_name=temp_file_path)
-
         if not downloaded_path or not os.path.exists(downloaded_path):
-            raise FileNotFoundError("File gagal diunduh atau path tidak ditemukan.")
+            raise FileNotFoundError("File gagal diunduh.")
 
-        # Timpa file database utama dengan file backup baru
         shutil.copyfile(downloaded_path, DB_NAME)
         
-        # Hapus file restore sementara setelah selesai digunakan
         if os.path.exists(downloaded_path):
             os.remove(downloaded_path)
 
         RESTORE_MODE.remove(user_id)
-
-        await status_msg.edit_text(
-            "✅ **Database berhasil direstore secara penuh.**\n\n"
-            "⚠️ **Rekomendasi:** Harap jalankan ulang / restart proses script Bot kamu agar data cache internal memuat database baru secara sempurna."
-        )
+        await status_msg.edit_text("✅ **Database berhasil direstore secara penuh.**\n\nJalankan ulang script bot kamu.")
 
     except Exception as e:
-        # Menghapus file temporary jika error terjadi di tengah jalan
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
         await status_msg.edit_text(f"❌ Restore gagal dieksekusi:\n`{e}`")
 
 
 # =====================================
-# COMMAND BROADCAST (Memicu Mode)
+# COMMAND BROADCAST
 # =====================================
 
 @app.on_message(filters.command("broadcast") & admin_filter & filters.private)
@@ -301,15 +277,10 @@ async def broadcast_cmd(client: Client, message: Message):
     BROADCAST_STATE.add(user_id)
     await message.reply_text(
         "📢 **Mode Broadcast Aktif**\n\n"
-        "Silakan kirim pesan yang ingin disebarkan ke seluruh user.\n"
-        "Bisa berupa Teks biasa, Foto, Video, atau Dokumen terformat.\n\n"
+        "Kirim pesan (Teks/Foto/Video/Dokumen) untuk disiarkan ke **SEMUA USER** yang pernah mengaktifkan bot.\n\n"
         "Ketik `/cancel_bc` untuk membatalkan."
     )
 
-
-# =====================================
-# CANCEL BROADCAST
-# =====================================
 
 @app.on_message(filters.command("cancel_bc") & admin_filter & filters.private)
 async def cancel_bc_cmd(client: Client, message: Message):
@@ -322,7 +293,7 @@ async def cancel_bc_cmd(client: Client, message: Message):
 
 
 # =====================================
-# PROSES EKSEKUSI BROADCAST (Teks & Media)
+# EKSEKUSI BROADCAST KE SEMUA USER (Pernah /start)
 # =====================================
 
 @app.on_message(admin_filter & filters.private & ~filters.command(["start", "help", "broadcast", "cancel_bc", "backup", "restore", "cancel_restore", "listchannel", "delchannel", "setprice"]))
@@ -334,23 +305,23 @@ async def execute_broadcast(client: Client, message: Message):
 
     BROADCAST_STATE.remove(user_id)
 
-    # Ambil semua user unik dari database riwayat order
+    # Mengambil list user_id dari fungsi get_all_users() yang mengambil dari tabel 'users'
     users = await get_all_users()
     if not users:
-        await message.reply_text("📭 Tidak ada data user unik yang terdata untuk menerima broadcast.")
+        await message.reply_text("📭 Belum ada database user yang terekam pernah melakukan /start.")
         return
 
-    status_msg = await message.reply_text(f"⏳ Mengirim materi broadcast ke {len(users)} user...")
+    status_msg = await message.reply_text(f"⏳ Mengirim materi broadcast ke {len(users)} total user...")
 
     sukses = 0
     gagal = 0
 
     for target_user_id in users:
         try:
-            # Menyalin pesan secara identik beserta format teks/medianya
+            # Menyalin pesan secara utuh ke setiap user ID
             await message.copy(chat_id=int(target_user_id))
             sukses += 1
-            await asyncio.sleep(0.05)  # Anti-spam delay kecil
+            await asyncio.sleep(0.05)  # Delay 50ms untuk menghindari limit limitasi telegram
         except FloodWait as e:
             await asyncio.sleep(e.value)
             await message.copy(chat_id=int(target_user_id))
@@ -361,7 +332,7 @@ async def execute_broadcast(client: Client, message: Message):
             gagal += 1
 
     await status_msg.edit_text(
-        "📢 **Broadcast Selesai Disiarkan!**\n\n"
+        "📢 **Broadcast Selesai Disiarkan Ke Semua User!**\n\n"
         f"✅ Berhasil terkirim: `{sukses}` user\n"
-        f"❌ Gagal/Blokir/Hapus: `{gagal}` user"
+        f"❌ Gagal (Blokir/Akun Hapus): `{gagal}` user"
     )
