@@ -1,8 +1,9 @@
 import os
 import shutil
+import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import Message
-from pyrogram.errors import RPCError
+from pyrogram.errors import RPCError, FloodWait, UserDeactivated, PeerIdInvalid
 from app import app
 from config import OWNER_ID, DB_NAME
 from database import (
@@ -10,18 +11,16 @@ from database import (
     get_channels,
     delete_channel,
     update_price,
+    get_all_users,  # Pastikan fungsi ini sudah ditambahkan di database.py
 )
 
-# State management untuk multi-step form & restore
+# State management untuk multi-step form, restore, dan broadcast
 ADMIN_STATE = {}
 RESTORE_MODE = set()
+BROADCAST_STATE = set()
 
 # Filter keamanan untuk memastikan hanya owner/admin yang bisa akses
 admin_filter = filters.user(OWNER_ID)
-
-
-def is_admin(user_id: int) -> bool:
-    return user_id == OWNER_ID
 
 
 # =====================================
@@ -44,7 +43,7 @@ async def add_channel_cmd(client: Client, message: Message):
 # ADMIN TEXT HANDLER (Logic State Teks)
 # =====================================
 
-@app.on_message(filters.text & ~filters.command(["start", "help", "backup", "restore", "cancel_restore", "listchannel", "delchannel", "setprice"]) & admin_filter)
+@app.on_message(filters.text & ~filters.command(["start", "help", "backup", "restore", "cancel_restore", "listchannel", "delchannel", "setprice", "broadcast", "cancel_bc"]) & admin_filter)
 async def admin_text(client: Client, message: Message):
     user_id = message.from_user.id
     state_data = ADMIN_STATE.get(user_id)
@@ -267,7 +266,6 @@ async def receive_restore_file(client: Client, message: Message):
         temp_file = "restore_temp.db"
         await message.download(file_name=temp_file)
 
-        # Proses override database utama dengan file yang diunggah
         shutil.copyfile(temp_file, DB_NAME)
         
         if os.path.exists(temp_file):
@@ -284,3 +282,79 @@ async def receive_restore_file(client: Client, message: Message):
         if os.path.exists("restore_temp.db"):
             os.remove("restore_temp.db")
         await status_msg.edit_text(f"❌ Restore gagal dieksekusi:\n`{e}`")
+
+
+# =====================================
+# COMMAND BROADCAST (Memicu Mode)
+# =====================================
+
+@app.on_message(filters.command("broadcast") & admin_filter & filters.private)
+async def broadcast_cmd(client: Client, message: Message):
+    user_id = message.from_user.id
+    BROADCAST_STATE.add(user_id)
+    await message.reply_text(
+        "📢 **Mode Broadcast Aktif**\n\n"
+        "Silakan kirim pesan yang ingin disebarkan ke seluruh user.\n"
+        "Bisa berupa Teks biasa, Foto, Video, atau Dokumen terformat.\n\n"
+        "Ketik `/cancel_bc` untuk membatalkan."
+    )
+
+
+# =====================================
+# CANCEL BROADCAST
+# =====================================
+
+@app.on_message(filters.command("cancel_bc") & admin_filter & filters.private)
+async def cancel_bc_cmd(client: Client, message: Message):
+    user_id = message.from_user.id
+    if user_id in BROADCAST_STATE:
+        BROADCAST_STATE.remove(user_id)
+        await message.reply_text("🔴 Mode broadcast telah dibatalkan.")
+    else:
+        await message.reply_text("Anda tidak sedang dalam mode broadcast.")
+
+
+# =====================================
+# PROSES EKSEKUSI BROADCAST (Teks & Media)
+# =====================================
+
+@app.on_message(admin_filter & filters.private & ~filters.command(["start", "help", "broadcast", "cancel_bc", "backup", "restore", "cancel_restore", "listchannel", "delchannel", "setprice"]))
+async def execute_broadcast(client: Client, message: Message):
+    user_id = message.from_user.id
+
+    if user_id not in BROADCAST_STATE:
+        return
+
+    BROADCAST_STATE.remove(user_id)
+
+    # Ambil semua user unik dari database riwayat order
+    users = await get_all_users()
+    if not users:
+        await message.reply_text("📭 Tidak ada data user unik yang terdata untuk menerima broadcast.")
+        return
+
+    status_msg = await message.reply_text(f"⏳ Mengirim materi broadcast ke {len(users)} user...")
+
+    sukses = 0
+    gagal = 0
+
+    for target_user_id in users:
+        try:
+            # Menyalin pesan secara identik beserta format teks/medianya
+            await message.copy(chat_id=int(target_user_id))
+            sukses += 1
+            await asyncio.sleep(0.05)  # Anti-spam delay kecil
+        except FloodWait as e:
+            await asyncio.sleep(e.value)
+            await message.copy(chat_id=int(target_user_id))
+            sukses += 1
+        except (UserDeactivated, PeerIdInvalid):
+            gagal += 1
+        except Exception:
+            gagal += 1
+
+    await status_msg.edit_text(
+        "📢 **Broadcast Selesai Disiarkan!**\n\n"
+        f"✅ Berhasil terkirim: `{sukses}` user\n"
+        f"❌ Gagal/Blokir/Hapus: `{gagal}` user"
+    )
