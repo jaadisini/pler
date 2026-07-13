@@ -2,12 +2,23 @@ import aiosqlite
 from config import DB_NAME
 
 # ==========================================
-# DATABASE
+# DATABASE INITIALIZATION
 # ==========================================
 
 async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:
-        # Menambahkan kolom photo_path ke tabel channels
+        # Tabel Users untuk menyimpan data semua user yang /start
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                username TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+        # Tabel Channels untuk daftar channel VIP
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS channels (
@@ -21,6 +32,7 @@ async def init_db():
             """
         )
 
+        # Tabel Orders untuk melacak riwayat transaksi
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS orders (
@@ -42,26 +54,41 @@ async def init_db():
 
 
 # ==========================================
+# USER & BROADCAST DATA
+# ==========================================
+
+async def add_user(user_id, username):
+    """Menyimpan atau memperbarui data pengguna saat melakukan /start."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            """
+            INSERT INTO users (user_id, username)
+            VALUES (?, ?)
+            ON CONFLICT(user_id) 
+            DO UPDATE SET username = excluded.username
+            """,
+            (user_id, username),
+        )
+        await db.commit()
+
+
+async def get_all_users():
+    """Mengambil semua ID user unik yang terdaftar di database untuk keperluan broadcast."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("SELECT user_id FROM users")
+        rows = await cursor.fetchall()
+        return [row[0] for row in rows]
+
+
+# ==========================================
 # CHANNEL
 # ==========================================
 
-async def add_channel(
-    name,
-    channel_id,
-    price,
-    description,
-    photo_path,  # Menerima parameter foto baru
-):
+async def add_channel(name, channel_id, price, description, photo_path):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute(
             """
-            INSERT INTO channels(
-                name,
-                channel_id,
-                price,
-                description,
-                photo_path
-            )
+            INSERT INTO channels(name, channel_id, price, description, photo_path)
             VALUES(?,?,?,?,?)
             ON CONFLICT(channel_id)
             DO UPDATE SET
@@ -70,13 +97,7 @@ async def add_channel(
                 description=excluded.description,
                 photo_path=excluded.photo_path
             """,
-            (
-                name,
-                str(channel_id),
-                price,
-                description,
-                photo_path,
-            ),
+            (name, str(channel_id), price, description, photo_path),
         )
         await db.commit()
         return cursor.lastrowid
@@ -85,55 +106,26 @@ async def add_channel(
 async def get_channels():
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            """
-            SELECT *
-            FROM channels
-            ORDER BY id ASC
-            """
-        )
+        cursor = await db.execute("SELECT * FROM channels ORDER BY id ASC")
         return await cursor.fetchall()
 
 
 async def get_channel(channel_id):
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            """
-            SELECT *
-            FROM channels
-            WHERE id=?
-            """,
-            (channel_id,),
-        )
+        cursor = await db.execute("SELECT * FROM channels WHERE id=?", (channel_id,))
         return await cursor.fetchone()
 
 
 async def delete_channel(channel_id):
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute(
-            """
-            DELETE FROM channels
-            WHERE id=?
-            """,
-            (channel_id,),
-        )
+        await db.execute("DELETE FROM channels WHERE id=?", (channel_id,))
         await db.commit()
 
 
 async def update_price(channel_id, price):
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute(
-            """
-            UPDATE channels
-            SET price=?
-            WHERE id=?
-            """,
-            (
-                price,
-                channel_id,
-            ),
-        )
+        await db.execute("UPDATE channels SET price=? WHERE id=?", (price, channel_id))
         await db.commit()
 
 
@@ -141,41 +133,14 @@ async def update_price(channel_id, price):
 # ORDER
 # ==========================================
 
-async def create_order(
-    user_id,
-    username,
-    channel_id,
-    transaction_id,
-    amount,
-    unique_amount,
-    qr_string,
-    expired_at,
-):
+async def create_order(user_id, username, channel_id, transaction_id, amount, unique_amount, qr_string, expired_at):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute(
             """
-            INSERT INTO orders(
-                user_id,
-                username,
-                channel_id,
-                transaction_id,
-                amount,
-                unique_amount,
-                qr_string,
-                expired_at
-            )
+            INSERT INTO orders(user_id, username, channel_id, transaction_id, amount, unique_amount, qr_string, expired_at)
             VALUES(?,?,?,?,?,?,?,?)
             """,
-            (
-                user_id,
-                username,
-                channel_id,
-                transaction_id,
-                amount,
-                unique_amount,
-                qr_string,
-                expired_at,
-            ),
+            (user_id, username, channel_id, transaction_id, amount, unique_amount, qr_string, expired_at),
         )
         await db.commit()
         return cursor.lastrowid
@@ -184,104 +149,38 @@ async def create_order(
 async def get_order(transaction_id):
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            """
-            SELECT *
-            FROM orders
-            WHERE transaction_id=?
-            """,
-            (transaction_id,),
-        )
+        cursor = await db.execute("SELECT * FROM orders WHERE transaction_id=?", (transaction_id,))
         return await cursor.fetchone()
 
 
 async def get_order_by_user(user_id):
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            """
-            SELECT *
-            FROM orders
-            WHERE user_id=?
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (user_id,),
-        )
+        cursor = await db.execute("SELECT * FROM orders WHERE user_id=? ORDER BY id DESC LIMIT 1", (user_id,))
         return await cursor.fetchone()
 
 
 async def get_active_order(user_id):
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            """
-            SELECT *
-            FROM orders
-            WHERE user_id=?
-            AND status='pending'
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (user_id,),
-        )
+        cursor = await db.execute("SELECT * FROM orders WHERE user_id=? AND status='pending' ORDER BY id DESC LIMIT 1", (user_id,))
         return await cursor.fetchone()
 
 
 async def get_pending_orders():
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            """
-            SELECT *
-            FROM orders
-            WHERE status='pending'
-            ORDER BY id ASC
-            """
-        )
+        cursor = await db.execute("SELECT * FROM orders WHERE status='pending' ORDER BY id ASC")
         return await cursor.fetchall()
 
 
 async def update_order_status(transaction_id, status):
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute(
-            """
-            UPDATE orders
-            SET status=?
-            WHERE transaction_id=?
-            """,
-            (
-                status,
-                transaction_id,
-            ),
-        )
+        await db.execute("UPDATE orders SET status=? WHERE transaction_id=?", (status, transaction_id))
         await db.commit()
 
 
 async def delete_expired_orders():
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute(
-            """
-            DELETE FROM orders
-            WHERE status='expired'
-            """
-        )
+        await db.execute("DELETE FROM orders WHERE status='expired'")
         await db.commit()
-
-
-# ==========================================
-# USER & BROADCAST DATA (Fitur Baru)
-# ==========================================
-
-async def get_all_users():
-    """Mengambil semua ID user unik yang terdaftar di riwayat transaksi untuk broadcast."""
-    async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute(
-            """
-            SELECT DISTINCT user_id 
-            FROM orders
-            """
-        )
-        rows = await cursor.fetchall()
-        # Mengembalikan list flat berupa integer [123456, 789101, ...]
-        return [row[0] for row in rows]
