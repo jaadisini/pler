@@ -1,6 +1,7 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.errors import RPCError
+from app import app
 from config import OWNER_ID
 from database import (
     add_channel,
@@ -19,7 +20,7 @@ admin_filter = filters.user(OWNER_ID)
 # ADD CHANNEL
 # =====================================
 
-@Client.on_message(filters.command("addchannel") & admin_filter)
+@app.on_message(filters.command("addchannel") & admin_filter)
 async def add_channel_cmd(client: Client, message: Message):
     ADMIN_STATE[message.from_user.id] = "ADD_CHANNEL"
     await message.reply_text(
@@ -33,7 +34,7 @@ async def add_channel_cmd(client: Client, message: Message):
 # ADMIN TEXT HANDLER (Logic State)
 # =====================================
 
-@Client.on_message(filters.text & ~filters.command(["start", "help"]) & admin_filter)
+@app.on_message(filters.text & ~filters.command(["start", "help"]) & admin_filter)
 async def admin_text(client: Client, message: Message):
     user_id = message.from_user.id
     state = ADMIN_STATE.get(user_id)
@@ -72,7 +73,7 @@ async def admin_text(client: Client, message: Message):
 # LIST CHANNEL
 # =====================================
 
-@Client.on_message(filters.command("listchannel") & admin_filter)
+@app.on_message(filters.command("listchannel") & admin_filter)
 async def list_channel_cmd(client: Client, message: Message):
     channels = await get_channels()
     if not channels:
@@ -93,7 +94,7 @@ async def list_channel_cmd(client: Client, message: Message):
 # DELETE CHANNEL
 # =====================================
 
-@Client.on_message(filters.command("delchannel") & admin_filter)
+@app.on_message(filters.command("delchannel") & admin_filter)
 async def del_channel_cmd(client: Client, message: Message):
     if len(message.command) < 2:
         await message.reply_text("Gunakan:\n/delchannel ID")
@@ -110,7 +111,7 @@ async def del_channel_cmd(client: Client, message: Message):
 # UPDATE PRICE
 # =====================================
 
-@Client.on_message(filters.command("setprice") & admin_filter)
+@app.on_message(filters.command("setprice") & admin_filter)
 async def set_price_cmd(client: Client, message: Message):
     if len(message.command) < 3:
         await message.reply_text("Gunakan:\n/setprice ID HARGA")
