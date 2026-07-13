@@ -1,8 +1,9 @@
-import asyncio
 import logging
-from pyrogram import Client
-from config import BOT_TOKEN, API_ID, API_HASH
-from database import init_db
+import asyncio
+from pyrogram import idle
+
+from app import app
+from database.db import db
 from tasks.payment_checker import PaymentChecker
 
 # Import handler agar dekorator terdaftar otomatis
@@ -11,20 +12,27 @@ import handler.backup
 import handler.payment
 import handler.user
 
+# Konfigurasi Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
-async def main():
+async def start():
+    # Inisialisasi Database
     await init_db()
-    app = Client("naka_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-    
-    # Inisialisasi Checker
+    # Inisialisasi dan jalankan Payment Checker
     checker = PaymentChecker(app)
     app.payment_checker = checker
     asyncio.create_task(checker.start())
-    
+
+    # Mulai Bot
     await app.start()
-    print("Bot berhasil berjalan!")
-    await asyncio.Event().wait()
+    print("Bot Started")
+
+    # Menjaga bot tetap berjalan sampai ada interupsi (misal: Ctrl+C)
+    await idle()
+
+    # Proses penghentian bot dan penutupan database dengan aman
+    await app.stop()
+    await db.close()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    app.run(start())
