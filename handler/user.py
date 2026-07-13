@@ -8,7 +8,7 @@ from pyrogram.types import (
     InlineKeyboardButton,
     InputMediaPhoto,
 )
-# Import add_user dari database
+# Import fungsi database yang dibutuhkan
 from database import get_channels, get_channel, get_order_by_user, add_user
 from app import app
 
@@ -70,7 +70,7 @@ async def show_channels(callback_query: CallbackQuery):
 
 
 # ==================================
-# DETAIL CHANNEL VIP
+# DETAIL CHANNEL VIP (Foto & Deskripsi Sebelum Bayar)
 # ==================================
 
 async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
@@ -87,8 +87,12 @@ async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
         f"Klik tombol di bawah untuk melanjutkan ke proses pembayaran QRIS."
     )
 
+    # Penyesuaian pengecekan Media (Mendukung File ID Telegram maupun Path Lokal)
     photo_path = channel['photo_path']
-    if not photo_path or not os.path.exists(photo_path):
+    if not photo_path:
+        photo_path = "assets/welcome.jpg"
+    elif not photo_path.startswith("AgA") and not os.path.exists(photo_path):
+        # Jika bukan File ID (Ciri file ID Pyrogram diawali AgA...) dan file lokal tidak ada
         photo_path = "assets/welcome.jpg"
 
     keyboard = InlineKeyboardMarkup([
@@ -96,10 +100,17 @@ async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
         [InlineKeyboardButton("⬅️ Kembali ke Daftar", callback_data="vip", style=enums.ButtonStyle.DANGER)]
     ])
 
-    await callback_query.edit_message_media(
-        media=InputMediaPhoto(photo_path, caption=text),
-        reply_markup=keyboard
-    )
+    try:
+        await callback_query.edit_message_media(
+            media=InputMediaPhoto(photo_path, caption=text),
+            reply_markup=keyboard
+        )
+    except Exception:
+        # Fallback total jika File ID bermasalah / expired saat rendering media edit
+        await callback_query.edit_message_media(
+            media=InputMediaPhoto("assets/welcome.jpg", caption=text),
+            reply_markup=keyboard
+        )
 
 
 # ==================================
@@ -181,4 +192,4 @@ async def myorder_cmd(client: Client, message: Message):
         f"🆔 {order['transaction_id']}\n"
         f"💰 Rp {order['unique_amount']:,}\n"
         f"{emoji} Status : <b>{status.upper()}</b>"
-        )
+    )
