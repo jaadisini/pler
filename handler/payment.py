@@ -16,7 +16,7 @@ from config import LOGGER_GROUP_ID
 # CREATE PAYMENT
 # ==================================
 
-@Client.on_callback_query(filters.regex(r"^buy:"))
+@app.on_callback_query(filters.regex(r"^buy:"))
 async def create_payment(client: Client, callback_query: CallbackQuery):
     user = callback_query.from_user
     channel_id = int(callback_query.data.split(":")[1])
@@ -66,7 +66,7 @@ async def create_payment(client: Client, callback_query: CallbackQuery):
 # CHECK PAYMENT
 # ==================================
 
-@Client.on_callback_query(filters.regex(r"^check:"))
+@app.on_callback_query(filters.regex(r"^check:"))
 async def check_payment(client: Client, callback_query: CallbackQuery):
     transaction_id = callback_query.data.split(":")[1]
     order = await get_order(transaction_id)
@@ -97,7 +97,7 @@ async def check_payment(client: Client, callback_query: CallbackQuery):
 # CANCEL PAYMENT
 # ==================================
 
-@Client.on_callback_query(filters.regex(r"^cancel:"))
+@app.on_callback_query(filters.regex(r"^cancel:"))
 async def cancel_payment(client: Client, callback_query: CallbackQuery):
     transaction_id = callback_query.data.split(":")[1]
     
