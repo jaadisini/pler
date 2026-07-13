@@ -1,4 +1,5 @@
 from pyrogram import Client, filters
+from pyrogram import enums
 from pyrogram.types import (
     Message,
     CallbackQuery,
@@ -14,8 +15,8 @@ from app import app
 @app.on_message(filters.command("start"))
 async def start_cmd(client: Client, message: Message):
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🛒 Beli VIP", callback_data="vip")],
-        [InlineKeyboardButton("❓ Bantuan", callback_data="help")]
+        [InlineKeyboardButton("🛒 Beli VIP", callback_data="vip", enums.ButtonStyle.SUCCESS)],
+        [InlineKeyboardButton("❓ Bantuan", callback_data="help", enums.ButtonStyle.PRIMARY)]
     ])
 
     await message.reply_photo(
@@ -44,7 +45,7 @@ async def show_channels(callback_query: CallbackQuery):
     for channel in channels:
         text += f"📺 <b>{channel['name']}</b>\n💰 Rp {channel['price']:,}\n\n"
         keyboard.append([
-            InlineKeyboardButton(f"🛒 {channel['name']}", callback_data=f"buy:{channel['id']}")
+            InlineKeyboardButton(f"🛒 {channel['name']}", callback_data=f"buy:{channel['id']}", enums.ButtonStyle.SUCCESS)
         ])
 
     keyboard.append([InlineKeyboardButton("⬅️ Kembali", callback_data="home")])
