@@ -11,6 +11,7 @@ from services.casaku import casaku
 from services.qrcode import generate_qr
 from datetime import datetime
 from config import LOGGER_GROUP_ID
+from app import app
 
 # ==================================
 # CREATE PAYMENT
