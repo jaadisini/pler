@@ -32,7 +32,7 @@ async def start():
 
     # Proses penghentian bot dan penutupan database dengan aman
     await app.stop()
-    await db.close()
+    
 
 if __name__ == "__main__":
     app.run(start())
