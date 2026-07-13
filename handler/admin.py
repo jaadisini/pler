@@ -261,15 +261,21 @@ async def receive_restore_file(client: Client, message: Message):
         return
 
     status_msg = await message.reply_text("⏳ Memproses file restore database...")
+    temp_file_path = os.path.abspath("restore_temp.db")
 
     try:
-        temp_file = "restore_temp.db"
-        await message.download(file_name=temp_file)
+        # Unduh file dan ambil path kembalian dari Pyrogram secara absolut
+        downloaded_path = await message.download(file_name=temp_file_path)
 
-        shutil.copyfile(temp_file, DB_NAME)
+        if not downloaded_path or not os.path.exists(downloaded_path):
+            raise FileNotFoundError("File gagal diunduh atau path tidak ditemukan.")
+
+        # Timpa file database utama dengan file backup baru
+        shutil.copyfile(downloaded_path, DB_NAME)
         
-        if os.path.exists(temp_file):
-            os.remove(temp_file)
+        # Hapus file restore sementara setelah selesai digunakan
+        if os.path.exists(downloaded_path):
+            os.remove(downloaded_path)
 
         RESTORE_MODE.remove(user_id)
 
@@ -279,8 +285,9 @@ async def receive_restore_file(client: Client, message: Message):
         )
 
     except Exception as e:
-        if os.path.exists("restore_temp.db"):
-            os.remove("restore_temp.db")
+        # Menghapus file temporary jika error terjadi di tengah jalan
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
         await status_msg.edit_text(f"❌ Restore gagal dieksekusi:\n`{e}`")
 
 
