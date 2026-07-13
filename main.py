@@ -3,7 +3,7 @@ import asyncio
 from pyrogram import idle
 
 from app import app
-from database.db import db
+from database.py import db
 from tasks.payment_checker import PaymentChecker
 
 # Import handler agar dekorator terdaftar otomatis
