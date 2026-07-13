@@ -3,7 +3,7 @@ import shutil
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from config import OWNER_ID, DB_NAME
-
+from app import app
 # Menggunakan set untuk menyimpan ID user yang sedang dalam mode restore
 RESTORE_MODE = set()
 
@@ -14,7 +14,7 @@ admin_filter = filters.user(OWNER_ID)
 # BACKUP DATABASE
 # =====================================
 
-@Client.on_message(filters.command("backup") & admin_filter)
+@app.on_message(filters.command("backup") & admin_filter)
 async def backup_cmd(client: Client, message: Message):
     if not os.path.exists(DB_NAME):
         await message.reply_text("Database tidak ditemukan.")
@@ -29,7 +29,7 @@ async def backup_cmd(client: Client, message: Message):
 # RESTORE DATABASE
 # =====================================
 
-@Client.on_message(filters.command("restore") & admin_filter)
+@app.on_message(filters.command("restore") & admin_filter)
 async def restore_cmd(client: Client, message: Message):
     RESTORE_MODE.add(message.from_user.id)
     await message.reply_text("Kirim file database (.db) untuk restore.")
@@ -38,7 +38,7 @@ async def restore_cmd(client: Client, message: Message):
 # RECEIVE DATABASE FILE
 # =====================================
 
-@Client.on_message(filters.document & admin_filter)
+@app.on_message(filters.document & admin_filter)
 async def restore_file(client: Client, message: Message):
     user_id = message.from_user.id
     
