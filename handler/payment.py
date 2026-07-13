@@ -1,4 +1,5 @@
 from pyrogram import Client, filters
+from pyrogram import enums
 from pyrogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from database import (
     get_channel,
@@ -72,6 +73,9 @@ async def check_payment(client: Client, callback_query: CallbackQuery):
     transaction_id = callback_query.data.split(":")[1]
     order = await get_order(transaction_id)
     
+    if not order:
+        return await callback_query.answer("Order tidak ditemukan di database.", show_alert=True)
+        
     result = await casaku.check_status(transaction_id)
     status = result["data"]["status"].lower()
 
@@ -88,8 +92,51 @@ async def check_payment(client: Client, callback_query: CallbackQuery):
             member_limit=1
         )
         
+        # Kirim notifikasi sukses ke user chat
         await callback_query.edit_message_caption(caption=f"✅ PEMBAYARAN BERHASIL\n\nInvite Link: {invite.invite_link}")
         await client.send_message(callback_query.from_user.id, f"✅ Pembayaran berhasil. Link: {invite.invite_link}")
+        
+        # --- PROSES KIRIM LOG / TESTIMONI KE GRUP ---
+        user = callback_query.from_user
+        waktu = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        channel_name = channel['name']
+        unique_amount = order['unique_amount']
+        
+        log_text = (
+            "🔔 <b>TESTIMONI — NAKA VIP</b>\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            f"🗓 <b>Tanggal:</b> {waktu}\n"
+            f"👤 <b>Buyer:</b> {user.first_name if not user.last_name else f'{user.first_name} {user.last_name}'}\n"
+            f"🆔 <b>ID Buyer:</b> <code>{user.id}</code>\n"
+            f"📨 <b>Username:</b> @{user.username or '-'}\n"
+            f"🛍 <b>VIP:</b> {channel_name}\n"
+            f"🧾 <b>Order ID:</b> <code>{transaction_id}</code>\n"
+            f"💰 <b>Total:</b> Rp {unique_amount:,}\n"
+            "🏦 <b>Metode:</b> QRIS\n"
+            "━━━━━━━━━━━━━━━━━━\n\n"
+            "Terima kasih sudah order layanan bot VIP kami.\n\n"
+            "👋🏻 <b>Pengen Order Cepat?</b>\n"
+            "Mudah? Transaksi Otomatis?\n"
+            "Silakan klik tombol di bawah 👇"
+        )
+        
+        # Tombol interaktif mengarah langsung ke bot VIP
+        bot_info = await client.get_me()
+        log_keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🛒 Hubungi Bot / Order", url=f"https://t.me/{bot_info.username}")]
+        ])
+        
+        try:
+            # Mengirim log berupa teks terformat lengkap dengan tombol ke grup log
+            await client.send_message(
+                chat_id=LOGGER_GROUP_ID,
+                text=log_text,
+                reply_markup=log_keyboard
+            )
+        except Exception as log_error:
+            # Mencegah bot crash jika LOGGER_GROUP_ID salah atau bot belum masuk grup log
+            print(f"Gagal mengirim log ke grup: {log_error}")
+            
     else:
         await update_order_status(transaction_id, status)
         await callback_query.edit_message_caption(caption=f"❌ Status: {status.upper()}")
