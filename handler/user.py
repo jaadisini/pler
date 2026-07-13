@@ -1,3 +1,4 @@
+import os
 from pyrogram import Client, filters
 from pyrogram import enums
 from pyrogram.types import (
@@ -5,8 +6,10 @@ from pyrogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    InputMediaPhoto,  # Tambahkan ini untuk mengubah media foto secara dinamis
 )
-from database import get_channels, get_order_by_user
+# Pastikan get_channel ikut diimport
+from database import get_channels, get_channel, get_order_by_user
 from app import app
 
 # ==================================
@@ -16,7 +19,6 @@ from app import app
 @app.on_message(filters.command("start"))
 async def start_cmd(client: Client, message: Message):
     keyboard = InlineKeyboardMarkup([
-        # Gunakan parameter style= secara eksplisit
         [InlineKeyboardButton("🛒 Beli VIP", callback_data="vip", style=enums.ButtonStyle.SUCCESS)],
         [InlineKeyboardButton("❓ Bantuan", callback_data="help", style=enums.ButtonStyle.PRIMARY)]
     ])
@@ -30,6 +32,7 @@ async def start_cmd(client: Client, message: Message):
         reply_markup=keyboard
     )
 
+
 # ==================================
 # LIST CHANNEL
 # ==================================
@@ -42,25 +45,62 @@ async def show_channels(callback_query: CallbackQuery):
         return
 
     keyboard = []
-    text = "📦 <b>DAFTAR CHANNEL VIP</b>\n\n"
+    text = "📦 <b>DAFTAR CHANNEL VIP</b>\n\nSilakan pilih channel di bawah untuk melihat detail info dan harga:"
 
     for channel in channels:
-        text += f"📺 <b>{channel['name']}</b>\n💰 Rp {channel['price']:,}\n\n"
         keyboard.append([
             InlineKeyboardButton(
-                f"🛒 {channel['name']}", 
-                callback_data=f"buy:{channel['id']}", 
-                style=enums.ButtonStyle.SUCCESS # Tambahkan style=
+                f"📺 {channel['name']}", 
+                callback_data=f"view:{channel['id']}",  # Mengubah target ke halaman detail (view)
+                style=enums.ButtonStyle.SUCCESS
             )
         ])
 
-    # Tambahkan style sekunder/danger untuk tombol kembali
     keyboard.append([InlineKeyboardButton("⬅️ Kembali", callback_data="home", style=enums.ButtonStyle.DANGER)])
 
-    await callback_query.edit_message_caption(
-        caption=text,
+    # Menggunakan edit_message_media agar foto dikembalikan ke welcome.jpg saat user klik "Kembali"
+    await callback_query.edit_message_media(
+        media=InputMediaPhoto("assets/welcome.jpg", caption=text),
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
+
+# ==================================
+# DETAIL CHANNEL VIP (Fitur Baru)
+# ==================================
+
+async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
+    channel = await get_channel(channel_id)
+    
+    if not channel:
+        await callback_query.answer("❌ Channel tidak ditemukan.", show_alert=True)
+        return
+
+    # Menyusun template teks detail produk
+    text = (
+        f"📺 <b>{channel['name']}</b>\n\n"
+        f"💰 <b>Harga :</b> Rp {channel['price']:,}\n"
+        f"📝 <b>Deskripsi :</b>\n{channel['description']}\n\n"
+        f"Klik tombol di bawah untuk melanjutkan ke proses pembayaran QRIS."
+    )
+
+    # Fallback aman: Jika file foto tidak ditemukan di server, gunakan welcome.jpg
+    photo_path = channel['photo_path']
+    if not photo_path or not os.path.exists(photo_path):
+        photo_path = "assets/welcome.jpg"
+
+    # Tombol Aksi khusus di dalam detail channel
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💳 Beli Sekarang", callback_data=f"buy:{channel['id']}", style=enums.ButtonStyle.SUCCESS)],
+        [InlineKeyboardButton("⬅️ Kembali ke Daftar", callback_data="vip", style=enums.ButtonStyle.DANGER)]
+    ])
+
+    # Mengubah foto & teks pesan menjadi detail channel terkait
+    await callback_query.edit_message_media(
+        media=InputMediaPhoto(photo_path, caption=text),
+        reply_markup=keyboard
+    )
+
 
 # ==================================
 # HELP
@@ -71,25 +111,28 @@ async def show_help(callback_query: CallbackQuery):
         [InlineKeyboardButton("⬅️ Kembali", callback_data="home", style=enums.ButtonStyle.DANGER)]
     ])
 
-    await callback_query.edit_message_caption(
-        caption=(
+    await callback_query.edit_message_media(
+        media=InputMediaPhoto("assets/welcome.jpg", caption=(
             "❓ <b>Pusat Bantuan</b>\n\n"
             "Cara membeli VIP:\n\n"
             "1. Tekan <b>🛒 Beli VIP</b>.\n"
-            "2. Pilih Channel VIP.\n"
-            "3. Lakukan pembayaran melalui QRIS.\n"
-            "4. Tekan <b>✅ Cek Pembayaran</b>.\n"
-            "5. Jika pembayaran berhasil, bot akan otomatis mengirimkan akses Channel VIP.\n\n"
+            "2. Pilih Channel VIP yang diminati.\n"
+            "3. Baca info detail lalu pilih <b>💳 Beli Sekarang</b>.\n"
+            "4. Lakukan pembayaran melalui kode QRIS yang dikirim bot.\n"
+            "5. Tekan <b>🔄 Cek Pembayaran</b>.\n"
+            "6. Sistem akan otomatis memasukkan Anda ke akses Channel VIP.\n\n"
             "Jika mengalami kendala, silakan hubungi admin."
-        ),
+        )),
         reply_markup=keyboard
     )
 
+
 # ==================================
-# CALLBACK HANDLER
+# CALLBACK ROUTER
 # ==================================
 
-@app.on_callback_query(filters.regex(r"^(vip|home|help)$"))
+# Menambahkan pattern 'view:\d+' ke dalam regex agar menangkap event klik detail channel
+@app.on_callback_query(filters.regex(r"^(vip|home|help|view:\d+)$"))
 async def user_callback(client: Client, callback_query: CallbackQuery):
     data = callback_query.data
     await callback_query.answer()
@@ -98,14 +141,16 @@ async def user_callback(client: Client, callback_query: CallbackQuery):
         await show_channels(callback_query)
     elif data == "help":
         await show_help(callback_query)
+    elif data.startswith("view:"):
+        # Ekstrak ID channel dari callback data (contoh "view:5" -> 5)
+        channel_id = int(data.split(":")[1])
+        await view_channel_detail(callback_query, channel_id)
     elif data == "home":
-        # Samakan dengan style pada fungsi start_cmd
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🛒 Beli VIP", callback_data="vip", style=enums.ButtonStyle.SUCCESS)],
             [InlineKeyboardButton("❓ Bantuan", callback_data="help", style=enums.ButtonStyle.PRIMARY)]
         ])
         
-        # Mengembalikan ke pesan foto awal
         await callback_query.message.delete()
         await client.send_photo(
             chat_id=callback_query.message.chat.id,
@@ -116,6 +161,7 @@ async def user_callback(client: Client, callback_query: CallbackQuery):
             ),
             reply_markup=keyboard
         )
+
 
 # ==================================
 # MY ORDER
