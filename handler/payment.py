@@ -41,7 +41,7 @@ async def create_payment(client: Client, callback_query: CallbackQuery):
         data = result.get("data")
         transaction_id = data["transactionId"]
         unique_amount = data.get("amount") or data.get("uniqueAmount") or channel['price']
-        qr_string = data["qrString"]
+        qr_string = data.get("qrString") or data.get("qr_string") or data.get("qrCode")
         expired_at = data.get("expiredAt", "-")
 
         await create_order(user.id, user.username or "", channel_id, transaction_id, channel['price'], unique_amount, qr_string, expired_at)
