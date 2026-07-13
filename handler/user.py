@@ -6,12 +6,12 @@ from pyrogram.types import (
     InlineKeyboardButton,
 )
 from database import get_channels, get_order_by_user
-
+from app import app
 # ==================================
 # START
 # ==================================
 
-@Client.on_message(filters.command("start"))
+@app.on_message(filters.command("start"))
 async def start_cmd(client: Client, message: Message):
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🛒 Beli VIP", callback_data="vip")],
@@ -81,7 +81,7 @@ async def show_help(callback_query: CallbackQuery):
 # CALLBACK HANDLER
 # ==================================
 
-@Client.on_callback_query(filters.regex(r"^(vip|home|help)$"))
+@app.on_callback_query(filters.regex(r"^(vip|home|help)$"))
 async def user_callback(client: Client, callback_query: CallbackQuery):
     data = callback_query.data
     await callback_query.answer()
@@ -112,7 +112,7 @@ async def user_callback(client: Client, callback_query: CallbackQuery):
 # MY ORDER
 # ==================================
 
-@Client.on_message(filters.command("myorder"))
+@app.on_message(filters.command("myorder"))
 async def myorder_cmd(client: Client, message: Message):
     order = await get_order_by_user(message.from_user.id)
 
