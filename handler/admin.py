@@ -3,7 +3,14 @@ import shutil
 import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import Message
-from pyrogram.errors import RPCError, FloodWait, UserDeactivated, PeerIdInvalid
+from pyrogram.errors import (
+    RPCError, 
+    FloodWait, 
+    UserDeactivated, 
+    PeerIdInvalid, 
+    UserIsBlocked, 
+    InputUserDeactivated
+)
 from app import app
 from config import OWNER_ID, DB_NAME
 from database import (
@@ -14,10 +21,9 @@ from database import (
     get_all_users,  # Mengambil semua user dari tabel 'users' yang pernah /start
 )
 
-# State management untuk multi-step form, restore, dan broadcast
+# State management untuk multi-step form dan restore
 ADMIN_STATE = {}
 RESTORE_MODE = set()
-BROADCAST_STATE = set()
 
 # Filter keamanan untuk memastikan hanya owner/admin yang bisa akses
 admin_filter = filters.user(OWNER_ID)
@@ -42,7 +48,7 @@ async def add_channel_cmd(client: Client, message: Message):
 # ADMIN TEXT HANDLER (Logic State Teks)
 # =====================================
 
-@app.on_message(filters.text & ~filters.command(["start", "help", "backup", "restore", "cancel_restore", "listchannel", "delchannel", "setprice", "broadcast", "cancel_bc"]) & admin_filter)
+@app.on_message(filters.text & ~filters.command(["start", "help", "backup", "restore", "cancel_restore", "listchannel", "delchannel", "setprice", "broadcast"]) & admin_filter)
 async def admin_text(client: Client, message: Message):
     user_id = message.from_user.id
     state_data = ADMIN_STATE.get(user_id)
@@ -268,71 +274,55 @@ async def receive_restore_file(client: Client, message: Message):
 
 
 # =====================================
-# COMMAND BROADCAST
+# COMMAND BROADCAST (Sistem Reply)
 # =====================================
 
 @app.on_message(filters.command("broadcast") & admin_filter & filters.private)
-async def broadcast_cmd(client: Client, message: Message):
-    user_id = message.from_user.id
-    BROADCAST_STATE.add(user_id)
-    await message.reply_text(
-        "📢 **Mode Broadcast Aktif**\n\n"
-        "Kirim pesan (Teks/Foto/Video/Dokumen) untuk disiarkan ke **SEMUA USER** yang pernah mengaktifkan bot.\n\n"
-        "Ketik `/cancel_bc` untuk membatalkan."
-    )
-
-
-@app.on_message(filters.command("cancel_bc") & admin_filter & filters.private)
-async def cancel_bc_cmd(client: Client, message: Message):
-    user_id = message.from_user.id
-    if user_id in BROADCAST_STATE:
-        BROADCAST_STATE.remove(user_id)
-        await message.reply_text("🔴 Mode broadcast telah dibatalkan.")
-    else:
-        await message.reply_text("Anda tidak sedang dalam mode broadcast.")
-
-
-# =====================================
-# EKSEKUSI BROADCAST KE SEMUA USER (Pernah /start)
-# =====================================
-
-@app.on_message(admin_filter & filters.private & ~filters.command(["start", "help", "broadcast", "cancel_bc", "backup", "restore", "cancel_restore", "listchannel", "delchannel", "setprice"]))
 async def execute_broadcast(client: Client, message: Message):
-    user_id = message.from_user.id
+    # Validasi apakah user melakukan reply ke pesan yang mau disiarkan
+    if not message.reply_to_message:
+        return await message.reply_text("❌ **Reply Goblok**")
 
-    if user_id not in BROADCAST_STATE:
-        return
-
-    BROADCAST_STATE.remove(user_id)
-
-    # Mengambil list user_id dari fungsi get_all_users() yang mengambil dari tabel 'users'
+    # Mengambil list user_id dari fungsi get_all_users()
     users = await get_all_users()
     if not users:
-        await message.reply_text("📭 Belum ada database user yang terekam pernah melakukan /start.")
-        return
+        return await message.reply_text("📭 Belum ada database user yang terekam.")
 
-    status_msg = await message.reply_text(f"⏳ Mengirim materi broadcast ke {len(users)} total user...")
+    broadcast_msg = message.reply_to_message
+    total = 0
+    successful = 0
+    blocked = 0
+    deleted = 0
+    unsuccessful = 0
 
-    sukses = 0
-    gagal = 0
+    pls_wait = await message.reply_text("⏳ **SABAR NGENTOT**")
 
-    for target_user_id in users:
+    for chat_id in users:
         try:
-            # Menyalin pesan secara utuh ke setiap user ID
-            await message.copy(chat_id=int(target_user_id))
-            sukses += 1
-            await asyncio.sleep(0.05)  # Delay 50ms untuk menghindari limit limitasi telegram
+            # Mengirim salinan pesan secara utuh ke setiap user ID
+            await broadcast_msg.copy(chat_id=int(chat_id))
+            successful += 1
+            await asyncio.sleep(0.05)  # Delay 50ms anti-spam limit telegram
         except FloodWait as e:
             await asyncio.sleep(e.value)
-            await message.copy(chat_id=int(target_user_id))
-            sukses += 1
-        except (UserDeactivated, PeerIdInvalid):
-            gagal += 1
+            await broadcast_msg.copy(chat_id=int(chat_id))
+            successful += 1
+        except UserIsBlocked:
+            blocked += 1
+        except InputUserDeactivated:
+            deleted += 1
         except Exception:
-            gagal += 1
+            unsuccessful += 1
+        
+        total += 1
 
-    await status_msg.edit_text(
-        "📢 **Broadcast Selesai Disiarkan Ke Semua User!**\n\n"
-        f"✅ Berhasil terkirim: `{sukses}` user\n"
-        f"❌ Gagal (Blokir/Akun Hapus): `{gagal}` user"
+    status = (
+        "📢 **Berhasil Mengirim pesan ke:**\n\n"
+        f"✅ Berhasil: `{successful}`\n"
+        f"❌ Gagal: `{unsuccessful}`\n"
+        f"🚫 Pengguna Diblokir: `{blocked}`\n"
+        f"💀 Akun Dihapus: `{deleted}`\n"
+        f"📊 Total Pengguna: `{total}`"
     )
+
+    return await pls_wait.edit_text(status)
