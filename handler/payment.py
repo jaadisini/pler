@@ -11,12 +11,12 @@ from database import (
 from services.casaku import casaku
 from services.qrcode import generate_qr
 from datetime import datetime
-from config import LOGGER_GROUP_ID
+from config import LOGGER_GROUP_ID, OWNER_ID
 from app import app
 
-# ==================================
-# CREATE PAYMENT
-# ==================================
+# =====================================
+# CREATE PAYMENT & LOG TO ADMIN
+# =====================================
 
 @app.on_callback_query(filters.regex(r"^buy:"))
 async def create_payment(client: Client, callback_query: CallbackQuery):
@@ -47,7 +47,7 @@ async def create_payment(client: Client, callback_query: CallbackQuery):
 
         await create_order(user.id, user.username or "", channel_id, transaction_id, channel['price'], unique_amount, qr_string, expired_at)
         
-        # Kirim QR
+        # Kirim QR ke User
         qr = generate_qr(qr_string)
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Cek Pembayaran", callback_data=f"check:{transaction_id}")],
@@ -60,6 +60,24 @@ async def create_payment(client: Client, callback_query: CallbackQuery):
             reply_markup=keyboard
         )
         await callback_query.answer()
+
+        # =====================================
+        # LOG NOTIFIKASI KE ADMIN
+        # =====================================
+        try:
+            admin_log_msg = (
+                "🔔 **LOG PEMBAYARAN BARU**\n\n"
+                f"👤 **User:** {user.mention} ( `{user.id}` )\n"
+                f"🏷 **Username:** @{user.username if user.username else '-'}\n"
+                f"📺 **Channel VIP:** {channel['name']} ( `{channel_id}` )\n"
+                f"💰 **Nominal:** Rp {unique_amount:,}\n"
+                f"🆔 **Invoice:** `{transaction_id}`\n"
+                f"⏰ **Expired:** {expired_at}"
+            )
+            await client.send_message(chat_id=OWNER_ID, text=admin_log_msg)
+        except Exception as log_error:
+            # Mencegah error log merusak alur transaksi user jika bot gagal chat admin
+            print(f"Gagal mengirim log ke admin: {log_error}")
         
     except Exception as e:
         await callback_query.message.reply_text(f"❌ Gagal membuat pembayaran: {e}")
