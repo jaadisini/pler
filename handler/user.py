@@ -39,20 +39,42 @@ async def start_cmd(client: Client, message: Message):
 
 
 # ==================================
-# LIST CHANNEL
+# LIST CHANNEL (Dengan Paginasi)
 # ==================================
 
-async def show_channels(callback_query: CallbackQuery):
+async def show_channels(callback_query: CallbackQuery, page: int = 1):
     channels = await get_channels()
 
     if not channels:
         await callback_query.answer("❌ Belum ada Channel VIP.", show_alert=True)
         return
 
-    keyboard = []
-    text = "📦 <b>DAFTAR CHANNEL VIP</b>\n\nSilakan pilih channel di bawah untuk melihat detail info dan harga:"
+    # --- Konfigurasi Paginasi ---
+    ITEMS_PER_PAGE = 10
+    total_channels = len(channels)
+    total_pages = (total_channels + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
 
-    for channel in channels:
+    # Keamanan jika page di luar batas
+    if page > total_pages:
+        page = total_pages
+    if page < 1:
+        page = 1
+
+    # Menentukan index awal dan akhir pemotongan list channel
+    start_idx = (page - 1) * ITEMS_PER_PAGE
+    end_idx = start_idx + ITEMS_PER_PAGE
+    
+    current_channels = channels[start_idx:end_idx]
+    # ----------------------------
+
+    keyboard = []
+    text = (
+        f"📦 <b>DAFTAR CHANNEL VIP</b> (Halaman {page}/{total_pages})\n\n"
+        f"Silakan pilih channel di bawah untuk melihat detail info dan harga:"
+    )
+
+    # Tambahkan channel ke dalam keyboard
+    for channel in current_channels:
         keyboard.append([
             InlineKeyboardButton(
                 f"📺 {channel['name']}", 
@@ -61,7 +83,19 @@ async def show_channels(callback_query: CallbackQuery):
             )
         ])
 
-    keyboard.append([InlineKeyboardButton("⬅️ Kembali", callback_data="home", style=enums.ButtonStyle.DANGER)])
+    # --- Tombol Navigasi Paginasi ---
+    nav_buttons = []
+    if page > 1:
+        nav_buttons.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"vip:{page-1}", style=enums.ButtonStyle.PRIMARY))
+    if page < total_pages:
+        nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"vip:{page+1}", style=enums.ButtonStyle.PRIMARY))
+    
+    # Jika ada tombol navigasi, masukkan ke baris keyboard yang sama
+    if nav_buttons:
+        keyboard.append(nav_buttons)
+    # --------------------------------
+
+    keyboard.append([InlineKeyboardButton("🏠 Kembali ke Menu", callback_data="home", style=enums.ButtonStyle.DANGER)])
 
     await callback_query.edit_message_media(
         media=InputMediaPhoto("assets/welcome.jpg", caption=text),
@@ -142,18 +176,25 @@ async def show_help(callback_query: CallbackQuery):
 # CALLBACK ROUTER
 # ==================================
 
-@app.on_callback_query(filters.regex(r"^(vip|home|help|view:\d+)$"))
+@app.on_callback_query(filters.regex(r"^(vip(:\d+)?|home|help|view:\d+)$"))
 async def user_callback(client: Client, callback_query: CallbackQuery):
     data = callback_query.data
     await callback_query.answer()
 
-    if data == "vip":
-        await show_channels(callback_query)
+    if data.startswith("vip"):
+        # Pisahkan 'vip' dan 'page' jika ada
+        parts = data.split(":")
+        page = int(parts[1]) if len(parts) > 1 else 1
+        
+        await show_channels(callback_query, page)
+        
     elif data == "help":
         await show_help(callback_query)
+        
     elif data.startswith("view:"):
         channel_id = int(data.split(":")[1])
         await view_channel_detail(callback_query, channel_id)
+        
     elif data == "home":
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🛒 Beli VIP", callback_data="vip", style=enums.ButtonStyle.SUCCESS)],
