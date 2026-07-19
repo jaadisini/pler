@@ -5,3 +5,5 @@ aiosqlite
 python-dotenv
 qrcode[pil]
 Pillow
+fastapi
+uvicorn
