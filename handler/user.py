@@ -1,20 +1,20 @@
 import os
-from datetime import datetime, timezone, timedelta
-from pyrogram import Client, filters
-from pyrogram import enums
+from datetime import datetime, timedelta, timezone
+
+from pyrogram import Client, enums, filters
 from pyrogram.types import (
-    Message,
     CallbackQuery,
-    InlineKeyboardMarkup,
     InlineKeyboardButton,
+    InlineKeyboardMarkup,
     InputMediaPhoto,
+    Message,
 )
-# Import fungsi database yang dibutuhkan
-from database import get_channels, get_channel, get_order_by_user, add_user
+
 from app import app
+from database import add_user, get_channel, get_channels, get_order_by_user
 
 # ==================================
-# TEKS & KEYBOARD MENU UTAMA (SESUAI GAMBAR)
+# KONSTANTA & KEYBOARD UTAMA
 # ==================================
 
 START_CAPTION = (
@@ -23,51 +23,50 @@ START_CAPTION = (
     "<blockquote>MASING MASING FOLDER MEMILIKI MEDIA PREMIUM, BISA DI SAVE, DAN TANPA JANGKA WAKTU (PERMANENT)</blockquote>\n\n"
     "<blockquote>Cara melakukan pembayaran :\n"
     "• Tekan /start.\n"
-    "• Tekan \"Lihat Daftar Vip\"...</blockquote>"
+    '• Tekan "Lihat Daftar Vip"...</blockquote>'
 )
 
-def get_main_keyboard():
+
+def get_main_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
-                text="List VVIP", 
-                callback_data="vip", 
+                text="List VVIP",
+                callback_data="vip",
                 style=enums.ButtonStyle.SUCCESS,
-                icon_custom_emoji_id="5447408120752013199" # Icon Folder/Tag
+                icon_custom_emoji_id="5447408120752013199",
             ),
-            
             InlineKeyboardButton(
-                text="Cara Order", 
-                callback_data="help", 
+                text="Cara Order",
+                callback_data="help",
                 style=enums.ButtonStyle.PRIMARY,
-                icon_custom_emoji_id="5805434498602506971"
-            )
-        ],
-        
+                icon_custom_emoji_id="5805434498602506971",
+            ),
+        ]
     ])
 
 
 # ==================================
-# START
+# START COMMAND
 # ==================================
+
 
 @app.on_message(filters.command("start"))
 async def start_cmd(client: Client, message: Message):
     user = message.from_user
-    
-    # Simpan atau update data user ke database setiap kali menekan /start
     await add_user(user_id=user.id, username=user.username)
 
     await message.reply_photo(
         photo="assets/welcome.jpg",
         caption=START_CAPTION,
-        reply_markup=get_main_keyboard()
+        reply_markup=get_main_keyboard(),
     )
 
 
 # ==================================
-# LIST CHANNEL (Paginasi Sesuai Gambar)
+# LIST CHANNEL (Paginasi)
 # ==================================
+
 
 async def show_channels(callback_query: CallbackQuery, page: int = 1):
     channels = await get_channels()
@@ -77,18 +76,14 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
         return
 
     # --- Konfigurasi Paginasi ---
-    ITEMS_PER_PAGE = 10
+    items_per_page = 10
     total_channels = len(channels)
-    total_pages = (total_channels + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+    total_pages = (total_channels + items_per_page - 1) // items_per_page
 
-    if page > total_pages:
-        page = total_pages
-    if page < 1:
-        page = 1
+    page = max(1, min(page, total_pages))
 
-    start_idx = (page - 1) * ITEMS_PER_PAGE
-    end_idx = start_idx + ITEMS_PER_PAGE
-    
+    start_idx = (page - 1) * items_per_page
+    end_idx = start_idx + items_per_page
     current_channels = channels[start_idx:end_idx]
 
     wib_now = datetime.now(timezone(timedelta(hours=7))).strftime("%H:%M:%S")
@@ -101,24 +96,24 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
         f"<emoji id=5424972470023104089>🕓</emoji> <b>{wib_now} WIB</b>"
     )
 
-    keyboard = []
-
-    for channel in current_channels:
-        keyboard.append([
+    keyboard = [
+        [
             InlineKeyboardButton(
                 text=f"{channel['name']}",
                 icon_custom_emoji_id="5447408120752013199",
                 callback_data=f"view:{channel['id']}",
-                style=enums.ButtonStyle.PRIMARY
+                style=enums.ButtonStyle.PRIMARY,
             )
-        ])
+        ]
+        for channel in current_channels
+    ]
 
     keyboard.append([
         InlineKeyboardButton(
             text="VVIP POPULER",
             icon_custom_emoji_id="5424972470023104089",
             callback_data="vip_populer",
-            style=enums.ButtonStyle.SUCCESS
+            style=enums.ButtonStyle.SUCCESS,
         )
     ])
 
@@ -129,7 +124,7 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
                 text="Prev",
                 icon_custom_emoji_id="5805434498602506971",
                 callback_data=f"vip:{page-1}",
-                style=enums.ButtonStyle.PRIMARY
+                style=enums.ButtonStyle.PRIMARY,
             )
         )
     if page < total_pages:
@@ -138,20 +133,24 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
                 text="Next",
                 icon_custom_emoji_id="5805194895261963278",
                 callback_data=f"vip:{page+1}",
-                style=enums.ButtonStyle.PRIMARY
+                style=enums.ButtonStyle.PRIMARY,
             )
         )
-    
+
     if nav_buttons:
         keyboard.append(nav_buttons)
 
     keyboard.append([
-        InlineKeyboardButton("🏰 Back Home", callback_data="home", style=enums.ButtonStyle.DANGER)
+        InlineKeyboardButton(
+            text="🏰 Back Home",
+            callback_data="home",
+            style=enums.ButtonStyle.DANGER,
+        )
     ])
 
     await callback_query.edit_message_media(
         media=InputMediaPhoto("assets/welcome.jpg", caption=text),
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
 
@@ -159,9 +158,10 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
 # DETAIL CHANNEL VIP
 # ==================================
 
+
 async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
     channel = await get_channel(channel_id)
-    
+
     if not channel:
         await callback_query.answer("❌ Channel tidak ditemukan.", show_alert=True)
         return
@@ -170,13 +170,11 @@ async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
         f"<emoji id=5447408120752013199>📁</emoji> <b>{channel['name']}</b>\n\n"
         f"<emoji id=5409048419211682843>💵</emoji> <b>Harga :</b> Rp {channel['price']:,}\n"
         f"<emoji id=5334882760735598374>📝</emoji> <b>Deskripsi :</b>\n{channel['description']}\n\n"
-        f"Klik tombol di bawah untuk melanjutkan ke proses pembayaran QRIS."
+        "Klik tombol di bawah untuk melanjutkan ke proses pembayaran QRIS."
     )
 
-    photo_path = channel['photo_path']
-    if not photo_path:
-        photo_path = "assets/welcome.jpg"
-    elif not photo_path.startswith("AgA") and not os.path.exists(photo_path):
+    photo_path = channel.get("photo_path")
+    if not photo_path or (not photo_path.startswith("AgA") and not os.path.exists(photo_path)):
         photo_path = "assets/welcome.jpg"
 
     keyboard = InlineKeyboardMarkup([
@@ -185,7 +183,7 @@ async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
                 text="Beli Sekarang",
                 icon_custom_emoji_id="5409048419211682843",
                 callback_data=f"buy:{channel['id']}",
-                style=enums.ButtonStyle.SUCCESS
+                style=enums.ButtonStyle.SUCCESS,
             )
         ],
         [
@@ -193,26 +191,27 @@ async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
                 text="Kembali ke Daftar",
                 icon_custom_emoji_id="5805434498602506971",
                 callback_data="vip",
-                style=enums.ButtonStyle.DANGER
+                style=enums.ButtonStyle.DANGER,
             )
-        ]
+        ],
     ])
 
     try:
         await callback_query.edit_message_media(
             media=InputMediaPhoto(photo_path, caption=text),
-            reply_markup=keyboard
+            reply_markup=keyboard,
         )
     except Exception:
         await callback_query.edit_message_media(
             media=InputMediaPhoto("assets/welcome.jpg", caption=text),
-            reply_markup=keyboard
+            reply_markup=keyboard,
         )
 
 
 # ==================================
-# HELP & CALLBACK EXTRA
+# HELP / CARA ORDER
 # ==================================
+
 
 async def show_help(callback_query: CallbackQuery):
     keyboard = InlineKeyboardMarkup([
@@ -221,24 +220,26 @@ async def show_help(callback_query: CallbackQuery):
                 text="Kembali",
                 icon_custom_emoji_id="5805434498602506971",
                 callback_data="home",
-                style=enums.ButtonStyle.DANGER
+                style=enums.ButtonStyle.DANGER,
             )
         ]
     ])
 
+    caption = (
+        "❓ <b>Pusat Bantuan / Cara Order</b>\n\n"
+        "Cara membeli VIP:\n\n"
+        "1. Tekan <b>🏷 List VVIP</b>.\n"
+        "2. Pilih Channel VIP yang diminati.\n"
+        "3. Baca info detail lalu pilih <b>💳 Beli Sekarang</b>.\n"
+        "4. Lakukan pembayaran melalui kode QRIS yang dikirim bot.\n"
+        "5. Tekan <b>🔄 Cek Pembayaran</b>.\n"
+        "6. Sistem akan otomatis memasukkan Anda ke akses Channel VIP.\n\n"
+        "Jika mengalami kendala, silakan hubungi admin."
+    )
+
     await callback_query.edit_message_media(
-        media=InputMediaPhoto("assets/welcome.jpg", caption=(
-            "❓ <b>Pusat Bantuan / Cara Order</b>\n\n"
-            "Cara membeli VIP:\n\n"
-            "1. Tekan <b>🏷 List VVIP</b>.\n"
-            "2. Pilih Channel VIP yang diminati.\n"
-            "3. Baca info detail lalu pilih <b>💳 Beli Sekarang</b>.\n"
-            "4. Lakukan pembayaran melalui kode QRIS yang dikirim bot.\n"
-            "5. Tekan <b>🔄 Cek Pembayaran</b>.\n"
-            "6. Sistem akan otomatis memasukkan Anda ke akses Channel VIP.\n\n"
-            "Jika mengalami kendala, silakan hubungi admin."
-        )),
-        reply_markup=keyboard
+        media=InputMediaPhoto("assets/welcome.jpg", caption=caption),
+        reply_markup=keyboard,
     )
 
 
@@ -246,7 +247,8 @@ async def show_help(callback_query: CallbackQuery):
 # CALLBACK ROUTER
 # ==================================
 
-@app.on_callback_query(filters.regex(r"^(vip(:\d+)?|home|help|view:\d+|vip_populer|voucher|stok|about|info)$"))
+
+@app.on_callback_query(filters.regex(r"^(vip(:\d+)?|home|help|view:\d+|vip_populer)$"))
 async def user_callback(client: Client, callback_query: CallbackQuery):
     data = callback_query.data
     await callback_query.answer()
@@ -255,27 +257,28 @@ async def user_callback(client: Client, callback_query: CallbackQuery):
         parts = data.split(":")
         page = int(parts[1]) if len(parts) > 1 else 1
         await show_channels(callback_query, page)
-        
+
     elif data == "help":
         await show_help(callback_query)
-        
+
     elif data.startswith("view:"):
         channel_id = int(data.split(":")[1])
         await view_channel_detail(callback_query, channel_id)
-        
+
     elif data == "vip_populer":
         await callback_query.answer("🔥 Menampilkan daftar VVIP Populer", show_alert=False)
-        
+
     elif data == "home":
         await callback_query.edit_message_media(
             media=InputMediaPhoto("assets/welcome.jpg", caption=START_CAPTION),
-            reply_markup=get_main_keyboard()
+            reply_markup=get_main_keyboard(),
         )
 
 
 # ==================================
-# MY ORDER
+# MY ORDER COMMAND
 # ==================================
+
 
 @app.on_message(filters.command("myorder"))
 async def myorder_cmd(client: Client, message: Message):
@@ -285,8 +288,13 @@ async def myorder_cmd(client: Client, message: Message):
         await message.reply_text("📭 Belum ada transaksi.")
         return
 
-    status = order['status']
-    emoji = {"pending": "🟡", "paid": "🟢", "expired": "🔴", "cancel": "⚫"}.get(status, "❔")
+    status = order.get("status", "")
+    emoji = {
+        "pending": "🟡",
+        "paid": "🟢",
+        "expired": "🔴",
+        "cancel": "⚫",
+    }.get(status, "❔")
 
     await message.reply_text(
         "📄 <b>Order Terakhir</b>\n\n"
