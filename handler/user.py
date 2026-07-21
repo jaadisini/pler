@@ -11,13 +11,15 @@ from pyrogram.types import (
 )
 
 from app import app
-from database import add_user, get_channel, get_channels, get_order_by_user
-
-# ==================================
-# STATE BUNDLE (In-Memory Storage)
-# ==================================
-# Menyimpan ID channel yang dipilih pengguna: {user_id: set([channel_id_1, channel_id_2])}
-USER_BUNDLES = {}
+from database import (
+    add_user,
+    clear_user_bundle,
+    get_channel,
+    get_channels,
+    get_order_by_user,
+    get_user_bundle,
+    toggle_user_bundle,
+)
 
 # ==================================
 # KONSTANTA & KEYBOARD UTAMA
@@ -89,7 +91,6 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
         await callback_query.answer("❌ Belum ada Channel VIP.", show_alert=True)
         return
 
-    # --- Konfigurasi Paginasi ---
     items_per_page = 10
     total_channels = len(channels)
     total_pages = (total_channels + items_per_page - 1) // items_per_page
@@ -169,13 +170,15 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
 
 
 # ==================================
-# MENU BUNDLE (PILIH MULTI CHANNEL)
+# MENU BUNDLE (DATABASE DRIVEN)
 # ==================================
 
 
 async def show_bundle_menu(callback_query: CallbackQuery, page: int = 1):
     user_id = callback_query.from_user.id
-    selected_ids = USER_BUNDLES.get(user_id, set())
+    
+    # Ambil data keranjang bundle langsung dari database
+    selected_ids = set(await get_user_bundle(user_id))
 
     channels = await get_channels()
     if not channels:
@@ -191,7 +194,6 @@ async def show_bundle_menu(callback_query: CallbackQuery, page: int = 1):
     end_idx = start_idx + items_per_page
     current_channels = channels[start_idx:end_idx]
 
-    # Menghitung Total Harga & Menyusun Nama Channel yang dipilih
     channel_map = {ch["id"]: ch for ch in channels}
     total_price = sum(channel_map[cid]["price"] for cid in selected_ids if cid in channel_map)
     selected_names = [channel_map[cid]["name"] for cid in selected_ids if cid in channel_map]
@@ -226,7 +228,6 @@ async def show_bundle_menu(callback_query: CallbackQuery, page: int = 1):
             )
         ])
 
-    # Tombol Navigasi
     nav_buttons = []
     if page > 1:
         nav_buttons.append(
@@ -247,7 +248,6 @@ async def show_bundle_menu(callback_query: CallbackQuery, page: int = 1):
     if nav_buttons:
         keyboard.append(nav_buttons)
 
-    # Tombol Aksi Pembelian Bundle
     if selected_ids:
         keyboard.append([
             InlineKeyboardButton(
@@ -396,28 +396,22 @@ async def user_callback(client: Client, callback_query: CallbackQuery):
         ch_id = int(ch_id_str)
         page = int(page_str)
 
-        if user_id not in USER_BUNDLES:
-            USER_BUNDLES[user_id] = set()
-
-        if ch_id in USER_BUNDLES[user_id]:
-            USER_BUNDLES[user_id].remove(ch_id)
-        else:
-            USER_BUNDLES[user_id].add(ch_id)
-
+        # Toggle item di database
+        await toggle_user_bundle(user_id, ch_id)
         await show_bundle_menu(callback_query, page)
 
     elif data == "clear_bundle":
-        USER_BUNDLES[user_id] = set()
+        # Bersihkan item di database
+        await clear_user_bundle(user_id)
         await callback_query.answer("🧹 Pilihan bundle dibersihkan.")
         await show_bundle_menu(callback_query, 1)
 
     elif data == "buy_bundle":
-        selected_ids = USER_BUNDLES.get(user_id, set())
+        selected_ids = await get_user_bundle(user_id)
         if not selected_ids:
             await callback_query.answer("⚠️ Silakan pilih minimal 1 channel!", show_alert=True)
             return
 
-        # TODO: Hubungkan dengan fungsi pembuatan invoice/pembayaran QRIS Anda di sini
         await callback_query.answer(
             f"🚀 Melanjutkan transaksi {len(selected_ids)} channel...", show_alert=True
         )
@@ -465,4 +459,4 @@ async def myorder_cmd(client: Client, message: Message):
         f"🆔 {order['transaction_id']}\n"
         f"💰 Rp {order['unique_amount']:,}\n"
         f"{emoji} Status : <b>{status.upper()}</b>"
-)
+    )
