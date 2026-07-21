@@ -5,13 +5,14 @@ from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMa
 from app import app
 from config import LOGGER_GROUP_ID, OWNER_ID
 from database import (
+    clear_user_bundle,
     create_order,
     get_active_order,
     get_channel,
     get_order,
+    get_user_bundle,
     update_order_status,
 )
-from handlers.user import USER_BUNDLES  # Sesuaikan path import USER_BUNDLES dari handler user Anda
 from services.casaku import casaku
 from services.qrcode import generate_qr
 
@@ -40,9 +41,9 @@ async def create_payment(client: Client, callback_query: CallbackQuery):
             return await callback_query.answer("Channel tidak ditemukan.", show_alert=True)
         channels_to_buy.append(channel)
 
-    # 2. Pembelian Bundle Multi-Channel
+    # 2. Pembelian Bundle Multi-Channel (DATABASE DRIVEN)
     elif data_str == "buy_bundle":
-        selected_ids = USER_BUNDLES.get(user.id, set())
+        selected_ids = await get_user_bundle(user.id)
         if not selected_ids:
             return await callback_query.answer("⚠️ Silakan pilih minimal 1 channel!", show_alert=True)
 
@@ -85,9 +86,9 @@ async def create_payment(client: Client, callback_query: CallbackQuery):
             expired_at,
         )
 
-        # Kosongkan pilihan bundle user jika transaksi berhasil dibuat
-        if data_str == "buy_bundle" and user.id in USER_BUNDLES:
-            USER_BUNDLES[user.id] = set()
+        # Bersihkan keranjang bundle user di database setelah transaksi berhasil dibuat
+        if data_str == "buy_bundle":
+            await clear_user_bundle(user.id)
 
         # Kirim QR ke User
         qr = generate_qr(qr_string)
