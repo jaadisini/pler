@@ -14,6 +14,40 @@ from database import get_channels, get_channel, get_order_by_user, add_user
 from app import app
 
 # ==================================
+# TEKS & KEYBOARD MENU UTAMA (SESUAI GAMBAR)
+# ==================================
+
+START_CAPTION = (
+    "Hello.\n"
+    "Silahkan Pilih Folder Sesuai Keinginan Anda.\n\n"
+    "<blockquote>MASING MASING FOLDER MEMILIKI MEDIA PREMIUM, BISA DI SAVE, DAN TANPA JANGKA WAKTU (PERMANENT)</blockquote>\n\n"
+    "<blockquote>Cara melakukan pembayaran :\n"
+    "• Tekan /start.\n"
+    "• Tekan \"Lihat Daftar Vip\"...</blockquote>"
+)
+
+def get_main_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                text="List VVIP", 
+                callback_data="vip", 
+                style=enums.ButtonStyle.SUCCESS,
+                icon_custom_emoji_id="5447408120752013199" # Icon Folder/Tag
+            ),
+            
+            InlineKeyboardButton(
+                text="Cara Order", 
+                callback_data="help", 
+                style=enums.ButtonStyle.PRIMARY,
+                icon_custom_emoji_id="5805434498602506971"
+            )
+        ],
+        
+    ])
+
+
+# ==================================
 # START
 # ==================================
 
@@ -24,23 +58,15 @@ async def start_cmd(client: Client, message: Message):
     # Simpan atau update data user ke database setiap kali menekan /start
     await add_user(user_id=user.id, username=user.username)
 
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🛒 Beli VIP", callback_data="vip", style=enums.ButtonStyle.SUCCESS)],
-        [InlineKeyboardButton("❓ Bantuan", callback_data="help", style=enums.ButtonStyle.PRIMARY)]
-    ])
-
     await message.reply_photo(
         photo="assets/welcome.jpg",
-        caption=(
-            "👋 <b>Selamat Datang Di Naka VIP</b>\n\n"
-            "Pilih menu di bawah untuk melihat daftar Channel VIP."
-        ),
-        reply_markup=keyboard
+        caption=START_CAPTION,
+        reply_markup=get_main_keyboard()
     )
 
 
 # ==================================
-# LIST CHANNEL (Dengan Paginasi Sesuai Gambar)
+# LIST CHANNEL (Paginasi Sesuai Gambar)
 # ==================================
 
 async def show_channels(callback_query: CallbackQuery, page: int = 1):
@@ -55,23 +81,18 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
     total_channels = len(channels)
     total_pages = (total_channels + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
 
-    # Keamanan jika page di luar batas
     if page > total_pages:
         page = total_pages
     if page < 1:
         page = 1
 
-    # Menentukan index awal dan akhir pemotongan list channel
     start_idx = (page - 1) * ITEMS_PER_PAGE
     end_idx = start_idx + ITEMS_PER_PAGE
     
     current_channels = channels[start_idx:end_idx]
-    # ----------------------------
 
-    # Mengambil Waktu WIB Real-time (UTC+7)
     wib_now = datetime.now(timezone(timedelta(hours=7))).strftime("%H:%M:%S")
 
-    # Format Teks/Caption (HTML <emoji> tetap berfungsi di caption pesan)
     text = (
         "<emoji id=5447408120752013199>📁</emoji> <b>LIST VVIP — NAKA VIP</b>\n\n"
         "🚀 <b>Berikut adalah daftar paket eksklusif yang kami tawarkan. "
@@ -82,7 +103,6 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
 
     keyboard = []
 
-    # Tambahkan channel ke dalam keyboard menggunakan icon_custom_emoji_id
     for channel in current_channels:
         keyboard.append([
             InlineKeyboardButton(
@@ -93,7 +113,6 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
             )
         ])
 
-    # Tombol VVIP Populer
     keyboard.append([
         InlineKeyboardButton(
             text="VVIP POPULER",
@@ -103,7 +122,6 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
         )
     ])
 
-    # --- Tombol Navigasi Paginasi ---
     nav_buttons = []
     if page > 1:
         nav_buttons.append(
@@ -126,10 +144,10 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
     
     if nav_buttons:
         keyboard.append(nav_buttons)
-    # --------------------------------
 
-    # Tombol Back Home
-    keyboard.append([InlineKeyboardButton("🏰 Back Home", callback_data="home", style=enums.ButtonStyle.DANGER)])
+    keyboard.append([
+        InlineKeyboardButton("🏰 Back Home", callback_data="home", style=enums.ButtonStyle.DANGER)
+    ])
 
     await callback_query.edit_message_media(
         media=InputMediaPhoto("assets/welcome.jpg", caption=text),
@@ -193,7 +211,7 @@ async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
 
 
 # ==================================
-# HELP
+# HELP & CALLBACK EXTRA
 # ==================================
 
 async def show_help(callback_query: CallbackQuery):
@@ -210,9 +228,9 @@ async def show_help(callback_query: CallbackQuery):
 
     await callback_query.edit_message_media(
         media=InputMediaPhoto("assets/welcome.jpg", caption=(
-            "❓ <b>Pusat Bantuan</b>\n\n"
+            "❓ <b>Pusat Bantuan / Cara Order</b>\n\n"
             "Cara membeli VIP:\n\n"
-            "1. Tekan <b>🛒 Beli VIP</b>.\n"
+            "1. Tekan <b>🏷 List VVIP</b>.\n"
             "2. Pilih Channel VIP yang diminati.\n"
             "3. Baca info detail lalu pilih <b>💳 Beli Sekarang</b>.\n"
             "4. Lakukan pembayaran melalui kode QRIS yang dikirim bot.\n"
@@ -228,7 +246,7 @@ async def show_help(callback_query: CallbackQuery):
 # CALLBACK ROUTER
 # ==================================
 
-@app.on_callback_query(filters.regex(r"^(vip(:\d+)?|home|help|view:\d+|vip_populer)$"))
+@app.on_callback_query(filters.regex(r"^(vip(:\d+)?|home|help|view:\d+|vip_populer|voucher|stok|about|info)$"))
 async def user_callback(client: Client, callback_query: CallbackQuery):
     data = callback_query.data
     await callback_query.answer()
@@ -249,20 +267,9 @@ async def user_callback(client: Client, callback_query: CallbackQuery):
         await callback_query.answer("🔥 Menampilkan daftar VVIP Populer", show_alert=False)
         
     elif data == "home":
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🛒 Beli VIP", callback_data="vip", style=enums.ButtonStyle.SUCCESS)],
-            [InlineKeyboardButton("❓ Bantuan", callback_data="help", style=enums.ButtonStyle.PRIMARY)]
-        ])
-        
-        await callback_query.message.delete()
-        await client.send_photo(
-            chat_id=callback_query.message.chat.id,
-            photo="assets/welcome.jpg",
-            caption=(
-                "👋 <b>Selamat Datang Di Naka VIP</b>\n\n"
-                "Pilih menu di bawah untuk melihat daftar Channel VIP."
-            ),
-            reply_markup=keyboard
+        await callback_query.edit_message_media(
+            media=InputMediaPhoto("assets/welcome.jpg", caption=START_CAPTION),
+            reply_markup=get_main_keyboard()
         )
 
 
