@@ -1,4 +1,5 @@
 import os
+import sys
 import shutil
 import asyncio
 from pyrogram import Client, filters
@@ -48,7 +49,7 @@ async def add_channel_cmd(client: Client, message: Message):
 # ADMIN TEXT HANDLER (Logic State Teks)
 # =====================================
 
-@app.on_message(filters.text & ~filters.command(["start", "help", "backup", "restore", "cancel_restore", "listchannel", "delchannel", "setprice", "broadcast"]) & admin_filter)
+@app.on_message(filters.text & ~filters.command(["start", "help", "backup", "restore", "cancel_restore", "listchannel", "delchannel", "setprice", "broadcast", "update"]) & admin_filter)
 async def admin_text(client: Client, message: Message):
     user_id = message.from_user.id
     state_data = ADMIN_STATE.get(user_id)
@@ -133,6 +134,42 @@ async def admin_photo(client: Client, message: Message):
     except Exception as e:
         ADMIN_STATE.pop(user_id, None)
         await message.reply_text(f"❌ Gagal memproses penyimpanan foto & channel: {e}")
+
+
+# =====================================
+# UPDATE SCRIPT BOT (Git Pull & Restart)
+# =====================================
+
+@app.on_message(filters.command("update") & admin_filter & filters.private)
+async def update_script_cmd(client: Client, message: Message):
+    status_msg = await message.reply_text("🔄 **Memeriksa dan menarik pembaruan dari repository Git...**")
+
+    try:
+        # Jalankan git pull secara asynchronous
+        process = await asyncio.create_subprocess_exec(
+            "git", "pull",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+
+        output = stdout.decode().strip()
+
+        if "Already up to date." in output or "Already up-to-date." in output:
+            await status_msg.edit_text("✅ **Bot sudah menggunakan versi script terbaru.**")
+            return
+
+        await status_msg.edit_text(
+            "🚀 **Pembaruan script berhasil ditarik!**\n\n"
+            f"```\n{output}\n```\n"
+            "🔄 **Melakukan restart bot otomatis...**"
+        )
+
+        # Restart proses bot
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    except Exception as e:
+        await status_msg.edit_text(f"❌ **Gagal melakukan update script:**\n`{e}`")
 
 
 # =====================================
