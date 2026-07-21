@@ -184,3 +184,45 @@ async def delete_expired_orders():
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("DELETE FROM orders WHERE status='expired'")
         await db.commit()
+
+# Buat tabel 'user_bundle_cart' saat inisialisasi database jika belum ada:
+# CREATE TABLE IF NOT EXISTS user_bundle_cart (
+#     user_id INTEGER,
+#     channel_id INTEGER,
+#     PRIMARY KEY (user_id, channel_id)
+# );
+
+async def get_user_bundle(user_id: int) -> list[int]:
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute(
+            "SELECT channel_id FROM user_bundle_cart WHERE user_id = ?", (user_id,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [row[0] for row in rows]
+
+
+async def toggle_user_bundle(user_id: int, channel_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute(
+            "SELECT 1 FROM user_bundle_cart WHERE user_id = ? AND channel_id = ?",
+            (user_id, channel_id),
+        ) as cursor:
+            exists = await cursor.fetchone()
+
+        if exists:
+            await db.execute(
+                "DELETE FROM user_bundle_cart WHERE user_id = ? AND channel_id = ?",
+                (user_id, channel_id),
+            )
+        else:
+            await db.execute(
+                "INSERT INTO user_bundle_cart (user_id, channel_id) VALUES (?, ?)",
+                (user_id, channel_id),
+            )
+        await db.commit()
+
+
+async def clear_user_bundle(user_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("DELETE FROM user_bundle_cart WHERE user_id = ?", (user_id,))
+        await db.commit()
