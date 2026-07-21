@@ -14,6 +14,12 @@ from app import app
 from database import add_user, get_channel, get_channels, get_order_by_user
 
 # ==================================
+# STATE BUNDLE (In-Memory Storage)
+# ==================================
+# Menyimpan ID channel yang dipilih pengguna: {user_id: set([channel_id_1, channel_id_2])}
+USER_BUNDLES = {}
+
+# ==================================
 # KONSTANTA & KEYBOARD UTAMA
 # ==================================
 
@@ -37,12 +43,20 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
                 icon_custom_emoji_id="5447408120752013199",
             ),
             InlineKeyboardButton(
+                text="Paket Bundle 📦",
+                callback_data="bundle",
+                style=enums.ButtonStyle.SUCCESS,
+                icon_custom_emoji_id="5447408120752013199",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
                 text="Cara Order",
                 callback_data="help",
                 style=enums.ButtonStyle.PRIMARY,
                 icon_custom_emoji_id="5805434498602506971",
             ),
-        ]
+        ],
     ])
 
 
@@ -155,6 +169,116 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
 
 
 # ==================================
+# MENU BUNDLE (PILIH MULTI CHANNEL)
+# ==================================
+
+
+async def show_bundle_menu(callback_query: CallbackQuery, page: int = 1):
+    user_id = callback_query.from_user.id
+    selected_ids = USER_BUNDLES.get(user_id, set())
+
+    channels = await get_channels()
+    if not channels:
+        await callback_query.answer("❌ Belum ada Channel VIP.", show_alert=True)
+        return
+
+    items_per_page = 8
+    total_channels = len(channels)
+    total_pages = (total_channels + items_per_page - 1) // items_per_page
+    page = max(1, min(page, total_pages))
+
+    start_idx = (page - 1) * items_per_page
+    end_idx = start_idx + items_per_page
+    current_channels = channels[start_idx:end_idx]
+
+    # Menghitung Total Harga & Menyusun Nama Channel yang dipilih
+    channel_map = {ch["id"]: ch for ch in channels}
+    total_price = sum(channel_map[cid]["price"] for cid in selected_ids if cid in channel_map)
+    selected_names = [channel_map[cid]["name"] for cid in selected_ids if cid in channel_map]
+
+    selected_str = (
+        "\n".join([f"• <b>{name}</b>" for name in selected_names])
+        if selected_names
+        else "<i>Belum ada channel yang dipilih</i>"
+    )
+
+    text = (
+        "📦 <b>CUSTOM BUNDLE — PILIH CHANNEL SENDIRI</b>\n\n"
+        "Pilih channel apa saja yang ingin Anda beli dalam <b>1x pembayaran</b>.\n"
+        "Klik tombol channel di bawah untuk mencentang/membatalkan.\n\n"
+        f"📋 <b>Channel Terpilih ({len(selected_ids)}):</b>\n{selected_str}\n\n"
+        f"💰 <b>Total Harga:</b> Rp {total_price:,}\n"
+        f"📄 <b>Halaman {page} / {total_pages}</b>"
+    )
+
+    keyboard = []
+    for ch in current_channels:
+        ch_id = ch["id"]
+        is_selected = ch_id in selected_ids
+        checkbox = "☑️" if is_selected else "⬜"
+        btn_style = enums.ButtonStyle.SUCCESS if is_selected else enums.ButtonStyle.PRIMARY
+
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"{checkbox} {ch['name']} — Rp {ch['price']:,}",
+                callback_data=f"toggle_bundle:{ch_id}:{page}",
+                style=btn_style,
+            )
+        ])
+
+    # Tombol Navigasi
+    nav_buttons = []
+    if page > 1:
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text="Prev",
+                callback_data=f"bundle:{page-1}",
+                style=enums.ButtonStyle.PRIMARY,
+            )
+        )
+    if page < total_pages:
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text="Next",
+                callback_data=f"bundle:{page+1}",
+                style=enums.ButtonStyle.PRIMARY,
+            )
+        )
+    if nav_buttons:
+        keyboard.append(nav_buttons)
+
+    # Tombol Aksi Pembelian Bundle
+    if selected_ids:
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"💳 Checkout Bundle (Rp {total_price:,})",
+                callback_data="buy_bundle",
+                style=enums.ButtonStyle.SUCCESS,
+            )
+        ])
+        keyboard.append([
+            InlineKeyboardButton(
+                text="🧹 Reset Pilihan",
+                callback_data="clear_bundle",
+                style=enums.ButtonStyle.DANGER,
+            )
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton(
+            text="🏰 Back Home",
+            callback_data="home",
+            style=enums.ButtonStyle.DANGER,
+        )
+    ])
+
+    await callback_query.edit_message_media(
+        media=InputMediaPhoto("assets/welcome.jpg", caption=text),
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+# ==================================
 # DETAIL CHANNEL VIP
 # ==================================
 
@@ -173,7 +297,6 @@ async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
         "Klik tombol di bawah untuk melanjutkan ke proses pembayaran QRIS."
     )
 
-    # Menggunakan akses kunci sqlite3.Row standar
     photo_path = channel["photo_path"] if "photo_path" in channel.keys() else None
     if not photo_path or (not photo_path.startswith("AgA") and not os.path.exists(photo_path)):
         photo_path = "assets/welcome.jpg"
@@ -229,12 +352,11 @@ async def show_help(callback_query: CallbackQuery):
     caption = (
         "❓ <b>Pusat Bantuan / Cara Order</b>\n\n"
         "Cara membeli VIP:\n\n"
-        "1. Tekan <b>🏷 List VVIP</b>.\n"
-        "2. Pilih Channel VIP yang diminati.\n"
-        "3. Baca info detail lalu pilih <b>💳 Beli Sekarang</b>.\n"
-        "4. Lakukan pembayaran melalui kode QRIS yang dikirim bot.\n"
-        "5. Tekan <b>🔄 Cek Pembayaran</b>.\n"
-        "6. Sistem akan otomatis memasukkan Anda ke akses Channel VIP.\n\n"
+        "1. Tekan <b>🏷 List VVIP</b> atau <b>📦 Paket Bundle</b>.\n"
+        "2. Pilih satu atau beberapa Channel VIP yang diminati.\n"
+        "3. Lanjutkan ke proses pembayaran QRIS yang dikirim bot.\n"
+        "4. Tekan <b>🔄 Cek Pembayaran</b>.\n"
+        "5. Sistem akan otomatis memasukkan Anda ke akses Channel VIP.\n\n"
         "Jika mengalami kendala, silakan hubungi admin."
     )
 
@@ -249,15 +371,56 @@ async def show_help(callback_query: CallbackQuery):
 # ==================================
 
 
-@app.on_callback_query(filters.regex(r"^(vip(:\d+)?|home|help|view:\d+|vip_populer)$"))
+@app.on_callback_query(
+    filters.regex(
+        r"^(vip(:\d+)?|home|help|view:\d+|vip_populer|bundle(:\d+)?|toggle_bundle:\d+:\d+|buy_bundle|clear_bundle)$"
+    )
+)
 async def user_callback(client: Client, callback_query: CallbackQuery):
     data = callback_query.data
+    user_id = callback_query.from_user.id
     await callback_query.answer()
 
     if data.startswith("vip"):
         parts = data.split(":")
         page = int(parts[1]) if len(parts) > 1 else 1
         await show_channels(callback_query, page)
+
+    elif data.startswith("bundle"):
+        parts = data.split(":")
+        page = int(parts[1]) if len(parts) > 1 else 1
+        await show_bundle_menu(callback_query, page)
+
+    elif data.startswith("toggle_bundle:"):
+        _, ch_id_str, page_str = data.split(":")
+        ch_id = int(ch_id_str)
+        page = int(page_str)
+
+        if user_id not in USER_BUNDLES:
+            USER_BUNDLES[user_id] = set()
+
+        if ch_id in USER_BUNDLES[user_id]:
+            USER_BUNDLES[user_id].remove(ch_id)
+        else:
+            USER_BUNDLES[user_id].add(ch_id)
+
+        await show_bundle_menu(callback_query, page)
+
+    elif data == "clear_bundle":
+        USER_BUNDLES[user_id] = set()
+        await callback_query.answer("🧹 Pilihan bundle dibersihkan.")
+        await show_bundle_menu(callback_query, 1)
+
+    elif data == "buy_bundle":
+        selected_ids = USER_BUNDLES.get(user_id, set())
+        if not selected_ids:
+            await callback_query.answer("⚠️ Silakan pilih minimal 1 channel!", show_alert=True)
+            return
+
+        # TODO: Hubungkan dengan fungsi pembuatan invoice/pembayaran QRIS Anda di sini
+        await callback_query.answer(
+            f"🚀 Melanjutkan transaksi {len(selected_ids)} channel...", show_alert=True
+        )
 
     elif data == "help":
         await show_help(callback_query)
@@ -302,4 +465,4 @@ async def myorder_cmd(client: Client, message: Message):
         f"🆔 {order['transaction_id']}\n"
         f"💰 Rp {order['unique_amount']:,}\n"
         f"{emoji} Status : <b>{status.upper()}</b>"
-    )
+)
