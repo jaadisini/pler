@@ -71,7 +71,7 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
     # Mengambil Waktu WIB Real-time (UTC+7)
     wib_now = datetime.now(timezone(timedelta(hours=7))).strftime("%H:%M:%S")
 
-    # Format Teks Sesuai Gambar
+    # Format Teks/Caption (HTML <emoji> tetap berfungsi di caption pesan)
     text = (
         "<emoji id=5447408120752013199>📁</emoji> <b>LIST VVIP — NAKA VIP</b>\n\n"
         "🚀 <b>Berikut adalah daftar paket eksklusif yang kami tawarkan. "
@@ -82,32 +82,53 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
 
     keyboard = []
 
-    # Tambahkan channel ke dalam keyboard dengan Icon Folder (📁)
+    # Tambahkan channel ke dalam keyboard menggunakan icon_custom_emoji_id
     for channel in current_channels:
         keyboard.append([
             InlineKeyboardButton(
-                f"<emoji id=5447408120752013199>📁</emoji> {channel['name']}", 
-                callback_data=f"view:{channel['id']}", style=enums.ButtonStyle.PRIMARY
+                text=f"{channel['name']}",
+                icon_custom_emoji_id="5447408120752013199",
+                callback_data=f"view:{channel['id']}",
+                style=enums.ButtonStyle.PRIMARY
             )
         ])
 
-    # Tombol VVIP Populer (Warna Hijau / SUCCESS)
+    # Tombol VVIP Populer
     keyboard.append([
-        InlineKeyboardButton("<emoji id=5424972470023104089>🔥</emoji> VVIP POPULER", callback_data="vip_populer", style=enums.ButtonStyle.SUCCESS)
+        InlineKeyboardButton(
+            text="VVIP POPULER",
+            icon_custom_emoji_id="5424972470023104089",
+            callback_data="vip_populer",
+            style=enums.ButtonStyle.SUCCESS
+        )
     ])
 
     # --- Tombol Navigasi Paginasi ---
     nav_buttons = []
     if page > 1:
-        nav_buttons.append(InlineKeyboardButton("<emoji id=5805434498602506971>⬅️</emoji> Prev", callback_data=f"vip:{page-1}", style=enums.ButtonStyle.PRIMARY))
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text="Prev",
+                icon_custom_emoji_id="5805434498602506971",
+                callback_data=f"vip:{page-1}",
+                style=enums.ButtonStyle.PRIMARY
+            )
+        )
     if page < total_pages:
-        nav_buttons.append(InlineKeyboardButton("Next <emoji id=5805194895261963278>➡️</emoji>", callback_data=f"vip:{page+1}", style=enums.ButtonStyle.PRIMARY))
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text="Next",
+                icon_custom_emoji_id="5805194895261963278",
+                callback_data=f"vip:{page+1}",
+                style=enums.ButtonStyle.PRIMARY
+            )
+        )
     
     if nav_buttons:
         keyboard.append(nav_buttons)
     # --------------------------------
 
-    # Tombol Back Home (Warna Merah / DANGER)
+    # Tombol Back Home
     keyboard.append([InlineKeyboardButton("🏰 Back Home", callback_data="home", style=enums.ButtonStyle.DANGER)])
 
     await callback_query.edit_message_media(
@@ -141,8 +162,22 @@ async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
         photo_path = "assets/welcome.jpg"
 
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("<emoji id=5409048419211682843>💵</emoji> Beli Sekarang", callback_data=f"buy:{channel['id']}", style=enums.ButtonStyle.SUCCESS)],
-        [InlineKeyboardButton("<emoji id=5805434498602506971>⬅️</emoji> Kembali ke Daftar", callback_data="vip", style=enums.ButtonStyle.DANGER)]
+        [
+            InlineKeyboardButton(
+                text="Beli Sekarang",
+                icon_custom_emoji_id="5409048419211682843",
+                callback_data=f"buy:{channel['id']}",
+                style=enums.ButtonStyle.SUCCESS
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="Kembali ke Daftar",
+                icon_custom_emoji_id="5805434498602506971",
+                callback_data="vip",
+                style=enums.ButtonStyle.DANGER
+            )
+        ]
     ])
 
     try:
@@ -163,7 +198,14 @@ async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
 
 async def show_help(callback_query: CallbackQuery):
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("<emoji id=5805434498602506971>⬅️</emoji> Kembali", callback_data="home", style=enums.ButtonStyle.DANGER)]
+        [
+            InlineKeyboardButton(
+                text="Kembali",
+                icon_custom_emoji_id="5805434498602506971",
+                callback_data="home",
+                style=enums.ButtonStyle.DANGER
+            )
+        ]
     ])
 
     await callback_query.edit_message_media(
@@ -204,7 +246,6 @@ async def user_callback(client: Client, callback_query: CallbackQuery):
         await view_channel_detail(callback_query, channel_id)
         
     elif data == "vip_populer":
-        # Tindakan jika tombol VIP POPULER ditekan (opsional)
         await callback_query.answer("🔥 Menampilkan daftar VVIP Populer", show_alert=False)
         
     elif data == "home":
