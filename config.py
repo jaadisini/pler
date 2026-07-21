@@ -18,5 +18,5 @@ CASAKU_LICENSE_KEY = os.getenv(
 )
 
 CASAKU_QRIS_ID = os.getenv(
-    "CASAKU_QRIS_ID", "f6b264e2-81d6-4d8c-a076-231904d53e55"
+    "CASAKU_QRIS_ID", "f737504f-8f5b-492b-9df5-231224f36472"
 )
