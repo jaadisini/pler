@@ -76,8 +76,8 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
         "<emoji id=5447408120752013199>📁</emoji> <b>LIST VVIP — NAKA VIP</b>\n\n"
         "🚀 <b>Berikut adalah daftar paket eksklusif yang kami tawarkan. "
         "Klik salah satu folder VVIP di tombol bawah untuk lihat detail & checkout.</b>\n"
-        f"📄 <b>Halaman {page} / {total_pages}</b>\n"
-        f"⏳ <b>{wib_now} WIB</b>"
+        f"<emoji id=5447421246172069841>📄</emoji> <b>Halaman {page} / {total_pages}</b>\n"
+        f"<emoji id=5424972470023104089>🕓</emoji> <b>{wib_now} WIB</b>"
     )
 
     keyboard = []
@@ -86,22 +86,22 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
     for channel in current_channels:
         keyboard.append([
             InlineKeyboardButton(
-                f"📁 {channel['name']}", 
-                callback_data=f"view:{channel['id']}"
+                f"<emoji id=5447408120752013199>📁</emoji> {channel['name']}", 
+                callback_data=f"view:{channel['id']}", style=enums.ButtonStyle.PRIMARY
             )
         ])
 
     # Tombol VVIP Populer (Warna Hijau / SUCCESS)
     keyboard.append([
-        InlineKeyboardButton("🔥 VVIP POPULER", callback_data="vip_populer", style=enums.ButtonStyle.SUCCESS)
+        InlineKeyboardButton("<emoji id=5424972470023104089>🔥</emoji> VVIP POPULER", callback_data="vip_populer", style=enums.ButtonStyle.SUCCESS)
     ])
 
     # --- Tombol Navigasi Paginasi ---
     nav_buttons = []
     if page > 1:
-        nav_buttons.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"vip:{page-1}", style=enums.ButtonStyle.PRIMARY))
+        nav_buttons.append(InlineKeyboardButton("<emoji id=5805434498602506971>⬅️</emoji> Prev", callback_data=f"vip:{page-1}", style=enums.ButtonStyle.PRIMARY))
     if page < total_pages:
-        nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"vip:{page+1}", style=enums.ButtonStyle.PRIMARY))
+        nav_buttons.append(InlineKeyboardButton("Next <emoji id=5805194895261963278>➡️</emoji>", callback_data=f"vip:{page+1}", style=enums.ButtonStyle.PRIMARY))
     
     if nav_buttons:
         keyboard.append(nav_buttons)
@@ -128,9 +128,9 @@ async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
         return
 
     text = (
-        f"📺 <b>{channel['name']}</b>\n\n"
-        f"💰 <b>Harga :</b> Rp {channel['price']:,}\n"
-        f"📝 <b>Deskripsi :</b>\n{channel['description']}\n\n"
+        f"<emoji id=5447408120752013199>📁</emoji> <b>{channel['name']}</b>\n\n"
+        f"<emoji id=5409048419211682843>💵</emoji> <b>Harga :</b> Rp {channel['price']:,}\n"
+        f"<emoji id=5334882760735598374>📝</emoji> <b>Deskripsi :</b>\n{channel['description']}\n\n"
         f"Klik tombol di bawah untuk melanjutkan ke proses pembayaran QRIS."
     )
 
@@ -141,8 +141,8 @@ async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
         photo_path = "assets/welcome.jpg"
 
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("💳 Beli Sekarang", callback_data=f"buy:{channel['id']}", style=enums.ButtonStyle.SUCCESS)],
-        [InlineKeyboardButton("⬅️ Kembali ke Daftar", callback_data="vip", style=enums.ButtonStyle.DANGER)]
+        [InlineKeyboardButton("<emoji id=5409048419211682843>💵</emoji> Beli Sekarang", callback_data=f"buy:{channel['id']}", style=enums.ButtonStyle.SUCCESS)],
+        [InlineKeyboardButton("<emoji id=5805434498602506971>⬅️</emoji> Kembali ke Daftar", callback_data="vip", style=enums.ButtonStyle.DANGER)]
     ])
 
     try:
@@ -163,7 +163,7 @@ async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
 
 async def show_help(callback_query: CallbackQuery):
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("⬅️ Kembali", callback_data="home", style=enums.ButtonStyle.DANGER)]
+        [InlineKeyboardButton("<emoji id=5805434498602506971>⬅️</emoji> Kembali", callback_data="home", style=enums.ButtonStyle.DANGER)]
     ])
 
     await callback_query.edit_message_media(
