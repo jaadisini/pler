@@ -173,7 +173,8 @@ async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
         "Klik tombol di bawah untuk melanjutkan ke proses pembayaran QRIS."
     )
 
-    photo_path = channel.get("photo_path")
+    # Menggunakan akses kunci sqlite3.Row standar
+    photo_path = channel["photo_path"] if "photo_path" in channel.keys() else None
     if not photo_path or (not photo_path.startswith("AgA") and not os.path.exists(photo_path)):
         photo_path = "assets/welcome.jpg"
 
@@ -288,7 +289,7 @@ async def myorder_cmd(client: Client, message: Message):
         await message.reply_text("📭 Belum ada transaksi.")
         return
 
-    status = order.get("status", "")
+    status = order["status"] if "status" in order.keys() else ""
     emoji = {
         "pending": "🟡",
         "paid": "🟢",
