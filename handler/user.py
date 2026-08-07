@@ -25,6 +25,8 @@ from database import (
 # KONSTANTA & KEYBOARD UTAMA
 # ==================================
 
+ALL_VIP_PRICE = 100000  # Harga paket Beli Semua VIP (Rp 100.000)
+
 START_CAPTION = (
     "Hello.\n"
     "Silahkan Pilih Folder Sesuai Keinginan Anda.\n\n"
@@ -49,6 +51,13 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
                 callback_data="bundle",
                 style=enums.ButtonStyle.SUCCESS,
                 icon_custom_emoji_id="5447408120752013199",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"🔥 Beli Semua VIP (Rp {ALL_VIP_PRICE:,})",
+                callback_data="buy:all",
+                style=enums.ButtonStyle.SUCCESS,
             ),
         ],
         [
@@ -122,6 +131,15 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
         ]
         for channel in current_channels
     ]
+
+    # Tombol Akses Semua VIP
+    keyboard.append([
+        InlineKeyboardButton(
+            text=f"🔥 Beli Semua Channel VIP (Rp {ALL_VIP_PRICE:,})",
+            callback_data="buy:all",
+            style=enums.ButtonStyle.SUCCESS,
+        )
+    ])
 
     keyboard.append([
         InlineKeyboardButton(
@@ -352,8 +370,8 @@ async def show_help(callback_query: CallbackQuery):
     caption = (
         "❓ <b>Pusat Bantuan / Cara Order</b>\n\n"
         "Cara membeli VIP:\n\n"
-        "1. Tekan <b>🏷 List VVIP</b> atau <b>📦 Paket Bundle</b>.\n"
-        "2. Pilih satu atau beberapa Channel VIP yang diminati.\n"
+        "1. Tekan <b>🏷 List VVIP</b>, <b>📦 Paket Bundle</b>, atau <b>🔥 Beli Semua VIP</b>.\n"
+        "2. Pilih satu, beberapa, atau semua Channel VIP.\n"
         "3. Lanjutkan ke proses pembayaran QRIS yang dikirim bot.\n"
         "4. Tekan <b>🔄 Cek Pembayaran</b>.\n"
         "5. Sistem akan otomatis memasukkan Anda ke akses Channel VIP.\n\n"
@@ -373,7 +391,7 @@ async def show_help(callback_query: CallbackQuery):
 
 @app.on_callback_query(
     filters.regex(
-        r"^(vip(:\d+)?|home|help|view:\d+|vip_populer|bundle(:\d+)?|toggle_bundle:\d+:\d+|buy_bundle|clear_bundle)$"
+        r"^(vip(:\d+)?|home|help|view:\d+|vip_populer|bundle(:\d+)?|toggle_bundle:\d+:\d+|buy_bundle|clear_bundle|buy:all)$"
     )
 )
 async def user_callback(client: Client, callback_query: CallbackQuery):
@@ -381,7 +399,13 @@ async def user_callback(client: Client, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     await callback_query.answer()
 
-    if data.startswith("vip"):
+    if data == "buy:all":
+        await callback_query.answer(
+            f"🚀 Melanjutkan ke pembayaran Paket Semua VIP (Rp {ALL_VIP_PRICE:,})...", 
+            show_alert=True
+        )
+
+    elif data.startswith("vip"):
         parts = data.split(":")
         page = int(parts[1]) if len(parts) > 1 else 1
         await show_channels(callback_query, page)
@@ -459,4 +483,4 @@ async def myorder_cmd(client: Client, message: Message):
         f"🆔 {order['transaction_id']}\n"
         f"💰 Rp {order['unique_amount']:,}\n"
         f"{emoji} Status : <b>{status.upper()}</b>"
-    )
+                                 )
