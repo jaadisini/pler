@@ -9,6 +9,7 @@ from database import (
     create_order,
     get_active_order,
     get_channel,
+    get_channels,
     get_order,
     get_user_bundle,
     update_order_status,
@@ -16,12 +17,14 @@ from database import (
 from services.casaku import casaku
 from services.qrcode import generate_qr
 
+ALL_VIP_PRICE = 100000  # Fixed price untuk Beli Semua VIP
+
 
 # =====================================
-# CREATE PAYMENT (SINGLE & BUNDLE)
+# CREATE PAYMENT (SINGLE, BUNDLE & ALL)
 # =====================================
 
-@app.on_callback_query(filters.regex(r"^(buy:\d+|buy_bundle)$"))
+@app.on_callback_query(filters.regex(r"^(buy:\d+|buy_bundle|buy:all)$"))
 async def create_payment(client: Client, callback_query: CallbackQuery):
     user = callback_query.from_user
     data_str = callback_query.data
@@ -32,16 +35,27 @@ async def create_payment(client: Client, callback_query: CallbackQuery):
         return await callback_query.answer("Masih ada pembayaran aktif.", show_alert=True)
 
     channels_to_buy = []
+    is_buy_all = False
 
-    # 1. Pembelian Single Channel
-    if data_str.startswith("buy:"):
+    # 1. Pembelian Semua Channel VIP (Fixed Price Rp 100.000)
+    if data_str == "buy:all":
+        all_channels = await get_channels()
+        if not all_channels:
+            return await callback_query.answer("❌ Belum ada Channel VIP tersedia.", show_alert=True)
+        channels_to_buy = all_channels
+        total_price = ALL_VIP_PRICE
+        is_buy_all = True
+
+    # 2. Pembelian Single Channel
+    elif data_str.startswith("buy:"):
         channel_id = int(data_str.split(":")[1])
         channel = await get_channel(channel_id)
         if not channel:
             return await callback_query.answer("Channel tidak ditemukan.", show_alert=True)
         channels_to_buy.append(channel)
+        total_price = channel["price"]
 
-    # 2. Pembelian Bundle Multi-Channel (DATABASE DRIVEN)
+    # 3. Pembelian Bundle Multi-Channel (DATABASE DRIVEN)
     elif data_str == "buy_bundle":
         selected_ids = await get_user_bundle(user.id)
         if not selected_ids:
@@ -54,9 +68,10 @@ async def create_payment(client: Client, callback_query: CallbackQuery):
 
         if not channels_to_buy:
             return await callback_query.answer("Channel pilihan tidak ditemukan.", show_alert=True)
+        
+        total_price = sum(ch["price"] for ch in channels_to_buy)
 
-    # Hitung total harga & siapkan nama/ID channel
-    total_price = sum(ch["price"] for ch in channels_to_buy)
+    # Siapkan nama/ID channel
     channel_names = ", ".join(ch["name"] for ch in channels_to_buy)
     channel_ids_str = ",".join(str(ch["id"]) for ch in channels_to_buy)
 
@@ -74,7 +89,7 @@ async def create_payment(client: Client, callback_query: CallbackQuery):
         qr_string = data.get("qrString") or data.get("qr_string") or data.get("qrCode")
         expired_at = data.get("expiredAt", "-")
 
-        # Simpan order ke database (channel_id berisi ID tunggal atau CSV ID bundle)
+        # Simpan order ke database (channel_id berisi ID tunggal atau CSV ID)
         await create_order(
             user.id,
             user.username or "",
@@ -86,7 +101,7 @@ async def create_payment(client: Client, callback_query: CallbackQuery):
             expired_at,
         )
 
-        # Bersihkan keranjang bundle user di database setelah transaksi berhasil dibuat
+        # Bersihkan keranjang bundle user di database jika memilih transaksi bundle
         if data_str == "buy_bundle":
             await clear_user_bundle(user.id)
 
@@ -97,7 +112,12 @@ async def create_payment(client: Client, callback_query: CallbackQuery):
             [InlineKeyboardButton("❌ Batalkan", callback_data=f"cancel:{transaction_id}")],
         ])
 
-        package_title = f"📦 VIP Bundle ({len(channels_to_buy)} Channel)" if len(channels_to_buy) > 1 else f"📦 Channel : {channel_names}"
+        if is_buy_all:
+            package_title = f"🔥 PAKET AKSE SEMUA VIP ({len(channels_to_buy)} Channel)"
+        elif len(channels_to_buy) > 1:
+            package_title = f"📦 VIP Bundle ({len(channels_to_buy)} Channel)"
+        else:
+            package_title = f"📦 Channel : {channel_names}"
 
         caption_text = (
             "💳 <b>Pembayaran VIP</b>\n\n"
@@ -121,7 +141,7 @@ async def create_payment(client: Client, callback_query: CallbackQuery):
                 "🔔 <b>LOG PEMBAYARAN BARU</b>\n\n"
                 f"👤 <b>User:</b> {user.mention} ( <code>{user.id}</code> )\n"
                 f"🏷 <b>Username:</b> @{user.username if user.username else '-'}\n"
-                f"📺 <b>Channel/Bundle:</b> {channel_names} ( <code>{channel_ids_str}</code> )\n"
+                f"📺 <b>Channel/Bundle:</b> {package_title}\n"
                 f"💰 <b>Nominal:</b> Rp {unique_amount:,}\n"
                 f"🆔 <b>Invoice:</b> <code>{transaction_id}</code>\n"
                 f"⏰ <b>Expired:</b> {expired_at}"
@@ -155,7 +175,7 @@ async def check_payment(client: Client, callback_query: CallbackQuery):
     if status == "paid":
         await update_order_status(transaction_id, "paid")
 
-        # Parsing ID Channel (Mendukung single id "1" maupun bundle "1,2,3")
+        # Parsing ID Channel (Mendukung single id, bundle, maupun "all" / CSV IDs)
         raw_channel_ids = str(order["channel_id"]).split(",")
         invite_links = []
         channel_names = []
