@@ -1,4 +1,4 @@
-import httpx
+import aiohttp
 from datetime import datetime
 from pyrogram import Client, filters
 from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
@@ -19,7 +19,7 @@ from database import (
 ALL_VIP_PRICE = 50000  # Fixed price untuk Beli Semua VIP
 MAELYN_BASE_URL = "https://api.maelyn.eu/api"
 
-# Helper Header Auth
+# Header autentikasi Maelyn API
 HEADERS = {
     "x-maelyn-auth": MAELYN_API_KEY,
     "Content-Type": "application/json"
@@ -43,7 +43,7 @@ async def create_payment(client: Client, callback_query: CallbackQuery):
     channels_to_buy = []
     is_buy_all = False
 
-    # 1. Pembelian Semua Channel VIP
+    # 1. Pembelian Semua Channel VIP (Fixed Price Rp 50.000)
     if data_str == "buy:all":
         all_channels = await get_channels()
         if not all_channels:
@@ -77,12 +77,11 @@ async def create_payment(client: Client, callback_query: CallbackQuery):
         
         total_price = sum(ch["price"] for ch in channels_to_buy)
 
-    # Siapkan nama/ID channel
-    channel_names = ", ".join(ch["name"] for ch in channels_to_buy)
-    channel_ids_str = ",".join(str(ch["id"]) for ch in channels_to_buy)
+    # Parsing nama dan ID channel secara aman dari KeyError ('id' vs 'channel_id')
+    channel_names = ", ".join(ch.get("name", "VIP Channel") for ch in channels_to_buy)
+    channel_ids_str = ",".join(str(ch.get("channel_id") or ch.get("id")) for ch in channels_to_buy)
 
     try:
-        # Request ke Saweria API Maelyn
         payload = {
             "user_id": SAWERIA_USER_ID,
             "amount": int(total_price),
@@ -91,23 +90,24 @@ async def create_payment(client: Client, callback_query: CallbackQuery):
             "msg": f"Pembayaran VIP Telegram {user.id}"
         }
 
-        async with httpx.AsyncClient() as http:
-            res = await http.post(
+        # Request ke API Saweria via Maelyn (Menggunakan aiohttp)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
                 f"{MAELYN_BASE_URL}/payment/saweria/create/transaction",
                 json=payload,
                 headers=HEADERS,
-                timeout=15.0
-            )
-            response_data = res.json()
+                timeout=15
+            ) as res:
+                response_data = await res.json()
 
         if not response_data.get("success"):
             error_msg = response_data.get("message", "Gagal membuat payment")
             return await callback_query.message.reply_text(f"❌ Gagal: {error_msg}")
 
-        payment_info = response_data["payment"]
-        transaction_id = payment_info["id"]
-        payment_url = payment_info["payment_url"]
-        unique_amount = payment_info["amount"]
+        payment_info = response_data.get("payment", {})
+        transaction_id = payment_info.get("id")
+        payment_url = payment_info.get("payment_url")
+        unique_amount = payment_info.get("amount", total_price)
 
         # Simpan order ke database
         await create_order(
@@ -121,11 +121,11 @@ async def create_payment(client: Client, callback_query: CallbackQuery):
             "-",
         )
 
-        # Bersihkan keranjang bundle user jika membeli bundle
+        # Bersihkan keranjang bundle user jika memilih transaksi bundle
         if data_str == "buy_bundle":
             await clear_user_bundle(user.id)
 
-        # Persiapan Tampilan Pesan
+        # Tampilan Paket
         if is_buy_all:
             package_title = f"🔥 PAKET AKSES SEMUA VIP ({len(channels_to_buy)} Channel)"
         elif len(channels_to_buy) > 1:
@@ -191,19 +191,20 @@ async def check_payment(client: Client, callback_query: CallbackQuery):
             "payment_id": transaction_id
         }
 
-        async with httpx.AsyncClient() as http:
-            res = await http.get(
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
                 f"{MAELYN_BASE_URL}/payment/saweria/check/transaction",
                 params=params,
                 headers=HEADERS,
-                timeout=15.0
-            )
-            result = res.json()
+                timeout=15
+            ) as res:
+                result = await res.json()
 
         if not result.get("success"):
             return await callback_query.answer(f"Gagal mengecek: {result.get('message')}", show_alert=True)
 
-        status = result["payment"]["status"].upper()
+        payment_data = result.get("payment", {})
+        status = payment_data.get("status", "").upper()
 
         if status == "PENDING":
             return await callback_query.answer("Pembayaran belum diterima / masih PENDING.", show_alert=True)
@@ -211,7 +212,7 @@ async def check_payment(client: Client, callback_query: CallbackQuery):
         if status == "PAID":
             await update_order_status(transaction_id, "paid")
 
-            # Parsing ID Channel
+            # Parsing ID Channel (Mendukung single id, bundle, maupun CSV IDs)
             raw_channel_ids = str(order["channel_id"]).split(",")
             invite_links = []
             channel_names = []
@@ -224,8 +225,9 @@ async def check_payment(client: Client, callback_query: CallbackQuery):
                 channel = await get_channel(int(cid_str))
                 if channel:
                     try:
+                        target_chat_id = int(channel.get("channel_id") or channel.get("id"))
                         invite = await client.create_chat_invite_link(
-                            chat_id=int(channel["channel_id"]),
+                            chat_id=target_chat_id,
                             member_limit=1,
                         )
                         invite_links.append(f"• <b>{channel['name']}</b>:\n{invite.invite_link}")
@@ -241,9 +243,8 @@ async def check_payment(client: Client, callback_query: CallbackQuery):
                 "<i>Link bersifat sekali pakai per channel. Silakan langsung bergabung!</i>"
             )
 
-            # Kirim pemberitahuan ke user
+            # Edit pesan dan kirim notifikasi ke user
             await callback_query.edit_message_text(text=success_text)
-            await client.send_message(callback_query.from_user.id, success_text)
 
             # LOG TESTIMONI KE GRUP
             user = callback_query.from_user
