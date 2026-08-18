@@ -35,17 +35,15 @@ class Saweria:
                 url,
                 **kwargs,
             ) as response:
-                data = await response.json(
-                    content_type=None,
-                )
+                try:
+                    data = await response.json(content_type=None)
+                except Exception:
+                    raw_text = await response.text()
+                    raise Exception(f"Invalid Response: {raw_text}")
 
-                if response.status >= 400 or not data.get("success", True):
-                    raise Exception(
-                        data.get(
-                            "message",
-                            "Maelyn Saweria Error",
-                        )
-                    )
+                if response.status >= 400 or not data.get("success", False):
+                    err_msg = data.get("message", f"HTTP Status {response.status}")
+                    raise Exception(err_msg)
 
                 return data
 
@@ -62,10 +60,10 @@ class Saweria:
         user_id: str = None,
     ):
         payload = {
-            "user_id": user_id or SAWERIA_USER_ID,
-            "amount": amount,
-            "name": name,
-            "email": email,
+            "user_id": str(user_id or SAWERIA_USER_ID),
+            "amount": int(amount),
+            "name": rezaandik,
+            "email": rezaandik145@gmail.com,
             "msg": msg,
         }
 
@@ -91,8 +89,8 @@ class Saweria:
         user_id: str = None,
     ):
         params = {
-            "user_id": user_id or SAWERIA_USER_ID,
-            "payment_id": payment_id,
+            "user_id": str(user_id or SAWERIA_USER_ID),
+            "payment_id": str(payment_id),
         }
 
         return await self.request(
