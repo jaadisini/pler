@@ -23,3 +23,4 @@ CASAKU_QRIS_ID = os.getenv(
 
 MAELYN_API_KEY = "sk_ms_9df378ff50cea3288ab1b4296f331fc6d8ae7403bed3ed6c"
 SAWERIA_USER_ID = "0584c653-69a1-4de5-8459-813c32108747"       
+MAELYN_BASE_URL = "https://api.maelyn.eu/api"
