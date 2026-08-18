@@ -8,6 +8,8 @@ from config import (
 )
 
 logger = logging.getLogger(__name__)
+NAME = "rezaandik"
+EMAIL = "rezaandik145@gmail.com"
 
 
 class Saweria:
@@ -62,8 +64,8 @@ class Saweria:
         payload = {
             "user_id": str(user_id or SAWERIA_USER_ID),
             "amount": int(amount),
-            "name": rezaandik,
-            "email": rezaandik145@gmail.com,
+            "name": NAME,
+            "email": EMAIL,
             "msg": msg,
         }
 
