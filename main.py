@@ -4,7 +4,7 @@ from pyrogram import idle
 
 from app import app
 from database import init_db
-from tasks.payment_checker import PaymentChecker
+#from tasks.payment_checker import PaymentChecker
 
 # Import handler agar dekorator terdaftar otomatis
 import handler.admin
@@ -19,9 +19,9 @@ async def start():
     # Inisialisasi Database
     await init_db()
     # Inisialisasi dan jalankan Payment Checker
-    checker = PaymentChecker(app)
-    app.payment_checker = checker
-    asyncio.create_task(checker.start())
+   # checker = PaymentChecker(app)
+   # app.payment_checker = checker
+  #  asyncio.create_task(checker.start())
 
     # Mulai Bot
     await app.start()
