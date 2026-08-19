@@ -55,7 +55,7 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
-                text=f"🔥 Beli Semua VIP (Rp {ALL_VIP_PRICE:,})",
+                text=f"🔥 Beli Semua VIP",
                 callback_data="buy:all",
                 style=enums.ButtonStyle.SUCCESS,
             ),
