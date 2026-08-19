@@ -3,14 +3,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8643518852:AAEFwcoNBY3mSxarFWe9d7VCf1AlqLI1pNk")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8699739112:AAFaXHwFSdC-poBVijeINnYwNasFI70DxEA")
 API_ID = int(os.getenv("API_ID", "28932643"))
 
 API_HASH = os.getenv("API_HASH", "3fb38bb53a7d33fb42ea208c6f77830b")
 
-OWNER_ID = int(os.getenv("OWNER_ID", "1816904396"))
+OWNER_ID = int(os.getenv("OWNER_ID", "1226169879"))
 DB_NAME = os.getenv("DB_NAME", "naka.db")
-LOGGER_GROUP_ID = int(os.environ.get("LOG_GROUP_ID", -1004443581634))
+LOGGER_GROUP_ID = int(os.environ.get("LOG_GROUP_ID", -1002729458912))
 CASAKU_BASE_URL = "https://api.casaku.id"
 
 CASAKU_LICENSE_KEY = os.getenv(
