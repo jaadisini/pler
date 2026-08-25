@@ -25,7 +25,7 @@ from database import (
 # KONSTANTA & KEYBOARD UTAMA
 # ==================================
 
-ALL_VIP_PRICE = 100000  # Harga paket Beli Semua VIP (Rp 100.000)
+ALL_VIP_PRICE = 30000  # Harga paket Beli Semua VIP (Rp 100.000)
 
 START_CAPTION = (
     "Hello.\n"
@@ -135,7 +135,7 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
     # Tombol Akses Semua VIP
     keyboard.append([
         InlineKeyboardButton(
-            text=f"🔥 Beli Semua Channel VIP (Rp {ALL_VIP_PRICE:,})",
+            text=f"🔥 Beli Semua Channel VIP",
             callback_data="buy:all",
             style=enums.ButtonStyle.SUCCESS,
         )
