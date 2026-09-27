@@ -17,7 +17,7 @@ from database import (
 from services.casaku import casaku
 from services.qrcode import generate_qr
 
-ALL_VIP_PRICE = 100000  # Fixed price untuk Beli Semua VIP
+ALL_VIP_PRICE = 50000  # Fixed price untuk Beli Semua VIP
 
 
 # =====================================
