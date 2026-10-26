@@ -234,6 +234,7 @@ async def create_payment(
 
         transaction_id = payment_data.get("id")
         payment_url = payment_data.get("payment_url")
+        qr_string = payment_data.get("qr_string")
         amount = int(payment_data.get("amount") or total_price)
 
         if not transaction_id or not payment_url:
@@ -263,10 +264,11 @@ async def create_payment(
             await clear_user_bundle(user.id)
 
         # =====================================
-        # GENERATE QR CODE
+        # GENERATE QR CODE (Prioritaskan qr_string QRIS)
         # =====================================
 
-        qr = generate_qr(payment_url)
+        qr_data = qr_string or payment_url
+        qr = generate_qr(qr_data)
 
         keyboard = InlineKeyboardMarkup(
             [
