@@ -1,6 +1,7 @@
 
 from datetime import datetime
 import logging
+import html
 
 from pyrogram import Client, filters
 from pyrogram.types import (
@@ -27,6 +28,50 @@ from services.qrcode import generate_qr
 logger = logging.getLogger(__name__)
 
 ALL_VIP_PRICE = 50000
+MAX_ERROR_LENGTH = 1000
+
+
+# =====================================
+# HELPER: ERROR MESSAGE
+# =====================================
+
+def safe_error_text(error, max_length=MAX_ERROR_LENGTH):
+    """Membatasi dan membersihkan pesan error untuk Telegram."""
+    error_text = str(error) or "Terjadi kesalahan yang tidak diketahui."
+
+    if len(error_text) > max_length:
+        error_text = error_text[:max_length] + "\n... detail error dipotong."
+
+    return error_text
+
+
+async def send_payment_error(callback_query, error):
+    """Mengirim pesan error dengan aman tanpa menyebabkan MESSAGE_TOO_LONG."""
+    logger.exception(
+        "Operasi pembayaran gagal: %s",
+        error,
+    )
+
+    message = (
+        "❌ <b>Gagal memproses pembayaran.</b>\n\n"
+        f"<code>{html.escape(safe_error_text(error))}</code>"
+    )
+
+    try:
+        await callback_query.message.reply_text(
+            message,
+            parse_mode="html",
+        )
+    except Exception:
+        logger.exception("Gagal mengirim pesan error ke pengguna")
+
+        try:
+            await callback_query.answer(
+                "Gagal memproses pembayaran. Silakan coba lagi.",
+                show_alert=True,
+            )
+        except Exception:
+            logger.exception("Gagal menampilkan notifikasi error")
 
 
 # =====================================
@@ -46,7 +91,13 @@ async def create_payment(
     await callback_query.answer()
 
     # Cek order aktif
-    active = await get_active_order(user.id)
+    try:
+        active = await get_active_order(user.id)
+    except Exception:
+        logger.exception("Gagal memeriksa order aktif user %s", user.id)
+        return await callback_query.message.reply_text(
+            "❌ Gagal memeriksa pembayaran aktif. Silakan coba lagi."
+        )
 
     if active:
         return await callback_query.message.reply_text(
@@ -158,15 +209,28 @@ async def create_payment(
             user_id=str(SAWERIA_USER_ID),
         )
 
+        if not isinstance(result, dict):
+            raise ValueError(
+                "Respons Maelyn API bukan objek JSON yang valid."
+            )
+
         payment_data = result.get("payment", {})
+
+        if not isinstance(payment_data, dict):
+            raise ValueError(
+                "Format data pembayaran dari Maelyn API tidak valid."
+            )
 
         transaction_id = (
             payment_data.get("id")
             or payment_data.get("payment_id")
+            or payment_data.get("transaction_id")
+            or payment_data.get("transactionId")
         )
 
         payment_url = (
             payment_data.get("payment_url")
+            or payment_data.get("paymentUrl")
             or payment_data.get("url")
         )
 
@@ -176,8 +240,11 @@ async def create_payment(
 
         if not transaction_id or not payment_url:
             raise ValueError(
-                "Data pembayaran tidak lengkap dari Maelyn API."
+                "ID transaksi atau URL pembayaran tidak ditemukan."
             )
+
+        transaction_id = str(transaction_id)
+        payment_url = str(payment_url)
 
         # =====================================
         # SIMPAN ORDER
@@ -187,7 +254,7 @@ async def create_payment(
             user.id,
             user.username or "",
             channel_ids_str,
-            str(transaction_id),
+            transaction_id,
             total_price,
             amount,
             payment_url,
@@ -240,10 +307,10 @@ async def create_payment(
 
         caption_text = (
             "💳 <b>Pembayaran VIP (Saweria)</b>\n\n"
-            f"{package_title}\n"
-            f"📋 <b>Detail VIP:</b> {channel_names}\n"
+            f"{html.escape(package_title)}\n"
+            f"📋 <b>Detail VIP:</b> {html.escape(channel_names)}\n"
             f"💰 <b>Nominal:</b> Rp {amount:,}\n\n"
-            f"🆔 <b>Invoice:</b> <code>{transaction_id}</code>\n\n"
+            f"🆔 <b>Invoice:</b> <code>{html.escape(transaction_id)}</code>\n\n"
             "Scan QR di atas atau tekan tombol Link Pembayaran. "
             "Setelah membayar, tekan Cek Pembayaran."
         )
@@ -252,6 +319,7 @@ async def create_payment(
             photo=qr,
             caption=caption_text,
             reply_markup=keyboard,
+            parse_mode="html",
         )
 
         # =====================================
@@ -264,16 +332,18 @@ async def create_payment(
                 f"👤 <b>User:</b> {user.mention} "
                 f"(<code>{user.id}</code>)\n"
                 f"🏷 <b>Username:</b> "
-                f"@{user.username or '-'}\n"
-                f"📺 <b>Channel/Bundle:</b> {package_title}\n"
+                f"@{html.escape(user.username or '-')}\n"
+                f"📺 <b>Channel/Bundle:</b> "
+                f"{html.escape(package_title)}\n"
                 f"💰 <b>Nominal:</b> Rp {amount:,}\n"
                 f"🆔 <b>Invoice:</b> "
-                f"<code>{transaction_id}</code>"
+                f"<code>{html.escape(transaction_id)}</code>"
             )
 
             await client.send_message(
                 chat_id=OWNER_ID,
                 text=admin_log_msg,
+                parse_mode="html",
             )
 
         except Exception:
@@ -282,11 +352,7 @@ async def create_payment(
             )
 
     except Exception as error:
-        logger.exception("Gagal membuat pembayaran Saweria")
-
-        await callback_query.message.reply_text(
-            f"❌ Gagal membuat pembayaran: {error}"
-        )
+        await send_payment_error(callback_query, error)
 
 
 # ==================================
@@ -299,6 +365,8 @@ async def check_payment(
     callback_query: CallbackQuery,
 ):
     transaction_id = callback_query.data.split(":", 1)[1]
+
+    await callback_query.answer()
 
     order = await get_order(transaction_id)
 
@@ -325,19 +393,28 @@ async def check_payment(
             user_id=str(SAWERIA_USER_ID),
         )
 
+        if not isinstance(result, dict):
+            raise ValueError(
+                "Respons pemeriksaan transaksi tidak valid."
+            )
+
         payment = result.get("payment", {})
+
+        if not isinstance(payment, dict):
+            payment = {}
+
         status = str(
             payment.get("status", "PENDING")
         ).strip().lower()
 
-    except Exception as error:
+    except Exception:
         logger.exception(
             "Gagal mengecek transaksi %s",
             transaction_id,
         )
 
         return await callback_query.answer(
-            f"Gagal mengecek pembayaran: {error}",
+            "Gagal mengecek pembayaran. Silakan coba lagi.",
             show_alert=True,
         )
 
@@ -345,7 +422,7 @@ async def check_payment(
     # PEMBAYARAN MASIH PENDING
     # =====================================
 
-    if status in ("pending", "unpaid", "waiting"):
+    if status in ("pending", "unpaid", "waiting", ""):
         return await callback_query.answer(
             "⏳ Pembayaran belum diterima.",
             show_alert=True,
@@ -374,9 +451,14 @@ async def check_payment(
             if not channel_id_str:
                 continue
 
-            channel = await get_channel(
-                int(channel_id_str)
-            )
+            try:
+                channel = await get_channel(int(channel_id_str))
+            except Exception:
+                logger.exception(
+                    "Gagal mengambil data channel %s",
+                    channel_id_str,
+                )
+                continue
 
             if not channel:
                 continue
@@ -388,11 +470,11 @@ async def check_payment(
                 )
 
                 invite_links.append(
-                    f"• <b>{channel['name']}</b>:\n"
-                    f"{invite.invite_link}"
+                    f"• <b>{html.escape(str(channel['name']))}</b>:\n"
+                    f"{html.escape(invite.invite_link)}"
                 )
 
-                channel_names.append(channel["name"])
+                channel_names.append(str(channel["name"]))
 
             except Exception:
                 logger.exception(
@@ -418,11 +500,20 @@ async def check_payment(
         try:
             await callback_query.edit_message_caption(
                 caption=success_text,
+                parse_mode="html",
             )
         except Exception:
-            await callback_query.message.reply_text(
-                success_text,
-            )
+            try:
+                await callback_query.message.reply_text(
+                    success_text,
+                    parse_mode="html",
+                    disable_web_page_preview=True,
+                )
+            except Exception:
+                logger.exception(
+                    "Gagal mengirim link VIP kepada user %s",
+                    callback_query.from_user.id,
+                )
 
         # =====================================
         # LOG TESTIMONI KE GRUP
@@ -449,12 +540,14 @@ async def check_payment(
             "━━━━━━━━━━━━━━━━━━\n"
             f"🗓 <b>Tanggal:</b> {waktu}\n"
             f"👤 <b>Buyer:</b> "
-            f"{user.first_name} {user.last_name or ''}\n"
+            f"{html.escape(user.first_name)} "
+            f"{html.escape(user.last_name or '')}\n"
             f"🆔 <b>ID Buyer:</b> <code>{user.id}</code>\n"
-            f"📨 <b>Username:</b> @{user.username or '-'}\n"
-            f"🛍 <b>VIP:</b> {bought_channels_str}\n"
+            f"📨 <b>Username:</b> "
+            f"@{html.escape(user.username or '-')}\n"
+            f"🛍 <b>VIP:</b> {html.escape(bought_channels_str)}\n"
             f"🧾 <b>Order ID:</b> "
-            f"<code>{transaction_id}</code>\n"
+            f"<code>{html.escape(transaction_id)}</code>\n"
             f"💰 <b>Total:</b> Rp {unique_amount:,}\n"
             "🏦 <b>Metode:</b> Saweria\n"
             "━━━━━━━━━━━━━━━━━━\n\n"
@@ -482,6 +575,7 @@ async def check_payment(
                 chat_id=int(LOGGER_GROUP_ID),
                 text=log_text,
                 reply_markup=log_keyboard,
+                parse_mode="html",
             )
 
         except Exception:
@@ -499,7 +593,13 @@ async def check_payment(
     # STATUS LAINNYA
     # =====================================
 
-    if status in ("cancel", "cancelled", "canceled", "expired", "failed"):
+    if status in (
+        "cancel",
+        "cancelled",
+        "canceled",
+        "expired",
+        "failed",
+    ):
         await update_order_status(
             transaction_id,
             status,
@@ -510,7 +610,7 @@ async def check_payment(
             show_alert=True,
         )
 
-    # Status yang tidak dikenal tidak boleh dianggap gagal atau sukses.
+    # Status yang tidak dikenal tidak dianggap sukses
     logger.warning(
         "Status transaksi tidak dikenal: %s = %s",
         transaction_id,
@@ -518,7 +618,7 @@ async def check_payment(
     )
 
     return await callback_query.answer(
-        f"Status pembayaran: {status.upper()}",
+        f"Status pembayaran: {status.upper()[:100]}",
         show_alert=True,
     )
 
@@ -578,4 +678,3 @@ async def cancel_payment(
             "Gagal membatalkan pembayaran.",
             show_alert=True,
         )
-
