@@ -59,7 +59,7 @@ async def send_payment_error(callback_query, error):
     try:
         await callback_query.message.reply_text(
             message,
-            parse_mode="html",
+            parse_mode="HTML",  # Diubah dari "html" ke "HTML"
         )
     except Exception:
         logger.exception("Gagal mengirim pesan error ke pengguna")
@@ -305,7 +305,7 @@ async def create_payment(
             photo=qr,
             caption=caption_text,
             reply_markup=keyboard,
-            parse_mode="html",
+            parse_mode="HTML",  # Diubah dari "html" ke "HTML"
         )
 
         # =====================================
@@ -329,7 +329,7 @@ async def create_payment(
             await client.send_message(
                 chat_id=OWNER_ID,
                 text=admin_log_msg,
-                parse_mode="html",
+                parse_mode="HTML",  # Diubah dari "html" ke "HTML"
             )
 
         except Exception:
@@ -486,13 +486,13 @@ async def check_payment(
         try:
             await callback_query.edit_message_caption(
                 caption=success_text,
-                parse_mode="html",
+                parse_mode="HTML",  # Diubah dari "html" ke "HTML"
             )
         except Exception:
             try:
                 await callback_query.message.reply_text(
                     success_text,
-                    parse_mode="html",
+                    parse_mode="HTML",  # Diubah dari "html" ke "HTML"
                     disable_web_page_preview=True,
                 )
             except Exception:
@@ -561,7 +561,7 @@ async def check_payment(
                 chat_id=int(LOGGER_GROUP_ID),
                 text=log_text,
                 reply_markup=log_keyboard,
-                parse_mode="html",
+                parse_mode="HTML",  # Diubah dari "html" ke "HTML"
             )
 
         except Exception:
