@@ -1,4 +1,3 @@
-
 from datetime import datetime
 import logging
 import html
@@ -221,22 +220,9 @@ async def create_payment(
                 "Format data pembayaran dari Maelyn API tidak valid."
             )
 
-        transaction_id = (
-            payment_data.get("id")
-            or payment_data.get("payment_id")
-            or payment_data.get("transaction_id")
-            or payment_data.get("transactionId")
-        )
-
-        payment_url = (
-            payment_data.get("payment_url")
-            or payment_data.get("paymentUrl")
-            or payment_data.get("url")
-        )
-
-        amount = int(
-            payment_data.get("amount") or total_price
-        )
+        transaction_id = payment_data.get("id")
+        payment_url = payment_data.get("payment_url")
+        amount = int(payment_data.get("amount") or total_price)
 
         if not transaction_id or not payment_url:
             raise ValueError(
@@ -532,7 +518,7 @@ async def check_payment(
         )
 
         unique_amount = int(
-            order["unique_amount"] or order["amount"]
+            order.get("unique_amount") or order.get("amount") or 0
         )
 
         log_text = (
