@@ -145,7 +145,7 @@ class Saweria:
     @staticmethod
     def _normalize_payment(result, payment):
         """
-        Menormalkan nama field pada objek pembayaran, termasuk qr_string dan payment_url.
+        Menormalkan nama field pada objek pembayaran, termasuk qr_string, payment_url, dan status.
         """
         payment_id = (
             payment.get("id")
@@ -161,6 +161,15 @@ class Saweria:
         )
 
         qr_string = payment.get("qr_string")
+
+        # Normalisasi status (mengatasi format boolean seperti true/false dari API)
+        status = payment.get("status")
+        if status is True or status == "true":
+            normalized_status = "paid"
+        elif status is False or status == "false":
+            normalized_status = "unpaid"
+        else:
+            normalized_status = str(status).lower() if status is not None else "unknown"
 
         if not payment_url and payment_id:
             payment_url = f"https://saweria.co/pay/{payment_id}"
@@ -178,6 +187,7 @@ class Saweria:
 
         normalized_payment = dict(payment)
         normalized_payment["id"] = str(payment_id)
+        normalized_payment["status"] = normalized_status
         if payment_url:
             normalized_payment["payment_url"] = payment_url
         if qr_string:
@@ -345,10 +355,19 @@ class Saweria:
         payment = self._extract_payment(result)
 
         if isinstance(payment, dict):
+            # Normalisasi status saat pengecekan transaksi
+            status = payment.get("status")
+            if status is True or status == "true":
+                normalized_status = "paid"
+            elif status is False or status == "false":
+                normalized_status = "unpaid"
+            else:
+                normalized_status = str(status).lower() if status is not None else "unknown"
+
             logger.info(
                 "Saweria transaction status: %s = %s",
                 transaction_id,
-                payment.get("status", "UNKNOWN"),
+                normalized_status,
             )
         else:
             logger.warning(
