@@ -25,12 +25,12 @@ from services.qrcode import generate_qr
 
 logger = logging.getLogger(__name__)
 
-ALL_VIP_PRICE = 100.000
+ALL_VIP_PRICE = 100000
 MAX_ERROR_LENGTH = 1000
 
 
 # =====================================
-# HELPER: ERROR MESSAGE
+# HELPER: ERROR MESSAGE & DICT ACCESS
 # =====================================
 
 def safe_error_text(error, max_length=MAX_ERROR_LENGTH):
@@ -41,6 +41,22 @@ def safe_error_text(error, max_length=MAX_ERROR_LENGTH):
         error_text = error_text[:max_length] + "\n... detail error dipotong."
 
     return error_text
+
+
+def get_field(obj, key, default=None):
+    """Fungsi helper untuk mengambil data dari sqlite3.Row atau dict."""
+    try:
+        if obj is None:
+            return default
+        if hasattr(obj, "keys") and key in obj.keys():
+            return obj[key]
+        elif isinstance(obj, dict):
+            return obj.get(key, default)
+        elif hasattr(obj, key):
+            return getattr(obj, key)
+    except Exception:
+        pass
+    return default
 
 
 async def send_payment_error(callback_query, error):
@@ -133,7 +149,7 @@ async def create_payment(
             )
 
         channels_to_buy.append(channel)
-        total_price = int(channel["price"])
+        total_price = int(get_field(channel, "price", 0))
 
     # =====================================
     # 3. BELI BUNDLE
@@ -159,7 +175,7 @@ async def create_payment(
             )
 
         total_price = sum(
-            int(channel["price"])
+            int(get_field(channel, "price", 0))
             for channel in channels_to_buy
         )
 
@@ -178,12 +194,12 @@ async def create_payment(
         )
 
     channel_names = ", ".join(
-        str(channel["name"])
+        str(get_field(channel, "name", "Channel"))
         for channel in channels_to_buy
     )
 
     channel_ids_str = ",".join(
-        str(channel["id"])
+        str(get_field(channel, "id", ""))
         for channel in channels_to_buy
     )
 
@@ -352,8 +368,10 @@ async def check_payment(
             show_alert=True,
         )
 
+    order_status = str(get_field(order, "status", "")).lower()
+
     # Jangan proses order yang sudah selesai
-    if str(order.get("status", "")).lower() == "paid":
+    if order_status == "paid":
         return await callback_query.answer(
             "✅ Pembayaran ini sudah diproses.",
             show_alert=True,
@@ -415,7 +433,7 @@ async def check_payment(
         )
 
         raw_channel_ids = str(
-            order["channel_id"]
+            get_field(order, "channel_id", "")
         ).split(",")
 
         invite_links = []
@@ -441,16 +459,17 @@ async def check_payment(
 
             try:
                 invite = await client.create_chat_invite_link(
-                    chat_id=int(channel["channel_id"]),
+                    chat_id=int(get_field(channel, "channel_id")),
                     member_limit=1,
                 )
 
+                ch_name = str(get_field(channel, "name", "Channel"))
                 invite_links.append(
-                    f"• {str(channel['name'])}:\n"
+                    f"• {ch_name}:\n"
                     f"{invite.invite_link}"
                 )
 
-                channel_names.append(str(channel["name"]))
+                channel_names.append(ch_name)
 
             except Exception:
                 logger.exception(
@@ -501,11 +520,11 @@ async def check_payment(
         bought_channels_str = (
             ", ".join(channel_names)
             if channel_names
-            else str(order["channel_id"])
+            else str(get_field(order, "channel_id", ""))
         )
 
         unique_amount = int(
-            order.get("unique_amount") or order.get("amount") or 0
+            get_field(order, "unique_amount") or get_field(order, "amount") or 0
         )
 
         log_text = (
@@ -610,7 +629,9 @@ async def cancel_payment(
             show_alert=True,
         )
 
-    if str(order.get("status", "")).lower() == "paid":
+    order_status = str(get_field(order, "status", "")).lower()
+
+    if order_status == "paid":
         return await callback_query.answer(
             "Pembayaran yang sudah berhasil tidak bisa dibatalkan.",
             show_alert=True,
