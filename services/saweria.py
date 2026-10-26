@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 class Saweria:
     def __init__(self):
-        # Menggunakan base URL default dari spesifikasi jika MAELYN_BASE_URL kosong
         base_url = MAELYN_BASE_URL or "https://api.maelyn.eu/api"
         self.base_url = base_url.rstrip("/")
         self.headers = {
@@ -93,11 +92,19 @@ class Saweria:
     @staticmethod
     def _extract_payment(result):
         """
-        Membaca objek pembayaran dari struktur respons API.
+        Membaca objek pembayaran dari struktur respons API,
+        termasuk struktur nested di dalam payment['data'].
         """
         payment = result.get("payment")
 
         if isinstance(payment, dict):
+            # Cek apakah ada struktur 'data' di dalam objek payment
+            payment_data = payment.get("data")
+            if isinstance(payment_data, dict):
+                # Gabungkan atau prioritaskan isi data agar id, status, dll mudah diakses
+                merged_payment = dict(payment)
+                merged_payment.update(payment_data)
+                return merged_payment
             return payment
 
         data = result.get("data")
@@ -138,7 +145,8 @@ class Saweria:
     @staticmethod
     def _normalize_payment(result, payment):
         """
-        Menormalkan nama field pada objek pembayaran.
+        Menormalkan nama field pada objek pembayaran dan memastikan
+        payment_url terbentuk secara otomatis jika menggunakan QRIS Saweria.
         """
         payment_id = (
             payment.get("id")
@@ -153,6 +161,10 @@ class Saweria:
             or payment.get("url")
         )
 
+        # Jika payment_url tidak ada di respons tapi id transaksi ada (format Saweria), buat URL-nya otomatis
+        if not payment_url and payment_id:
+            payment_url = f"https://saweria.co/pay/{payment_id}"
+
         if not payment_id:
             logger.error(
                 "Transaction ID tidak ditemukan. "
@@ -163,11 +175,6 @@ class Saweria:
                 "Respons API tidak memiliki ID transaksi. "
                 f"Respons API: {result}"
             )
-
-        if not payment_url:
-            # Beberapa response check transaction mungkin tidak menyertakan payment_url,
-            # namun untuk create transaction wajib ada.
-            pass
 
         normalized_payment = dict(payment)
         normalized_payment["id"] = str(payment_id)
@@ -215,8 +222,8 @@ class Saweria:
     async def create_transaction(
         self,
         amount: int,
-        name: str = "rezaandik",
-        email: str = "rezaandik145@gmail.com",
+        name: str = "John Doe",
+        email: str = "john@example.com",
         msg: str = "Terima kasih",
         user_id: str = None,
     ):
@@ -244,8 +251,8 @@ class Saweria:
         payload = {
             "user_id": account_id,
             "amount": amount,
-            "name": name or "John Doe",
-            "email": email or "john@example.com",
+            "name": name or "rezaandik",
+            "email": email or "rezaandik145@gmail.com",
             "msg": msg or "Terima kasih",
         }
 
