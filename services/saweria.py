@@ -215,8 +215,8 @@ class Saweria:
     async def create_transaction(
         self,
         amount: int,
-        name: str = "John Doe",
-        email: str = "john@example.com",
+        name: str = "rezaandik",
+        email: str = "rezaandik145@gmail.com",
         msg: str = "Terima kasih",
         user_id: str = None,
     ):
