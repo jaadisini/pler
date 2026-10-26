@@ -98,10 +98,8 @@ class Saweria:
         payment = result.get("payment")
 
         if isinstance(payment, dict):
-            # Cek apakah ada struktur 'data' di dalam objek payment
             payment_data = payment.get("data")
             if isinstance(payment_data, dict):
-                # Gabungkan atau prioritaskan isi data agar id, status, dll mudah diakses
                 merged_payment = dict(payment)
                 merged_payment.update(payment_data)
                 return merged_payment
@@ -123,6 +121,7 @@ class Saweria:
                     "transactionId",
                     "payment_url",
                     "paymentUrl",
+                    "qr_string",
                 )
             ):
                 return data
@@ -136,6 +135,7 @@ class Saweria:
                 "transactionId",
                 "payment_url",
                 "paymentUrl",
+                "qr_string",
             )
         ):
             return result
@@ -145,8 +145,7 @@ class Saweria:
     @staticmethod
     def _normalize_payment(result, payment):
         """
-        Menormalkan nama field pada objek pembayaran dan memastikan
-        payment_url terbentuk secara otomatis jika menggunakan QRIS Saweria.
+        Menormalkan nama field pada objek pembayaran, termasuk qr_string dan payment_url.
         """
         payment_id = (
             payment.get("id")
@@ -161,7 +160,8 @@ class Saweria:
             or payment.get("url")
         )
 
-        # Jika payment_url tidak ada di respons tapi id transaksi ada (format Saweria), buat URL-nya otomatis
+        qr_string = payment.get("qr_string")
+
         if not payment_url and payment_id:
             payment_url = f"https://saweria.co/pay/{payment_id}"
 
@@ -180,6 +180,8 @@ class Saweria:
         normalized_payment["id"] = str(payment_id)
         if payment_url:
             normalized_payment["payment_url"] = payment_url
+        if qr_string:
+            normalized_payment["qr_string"] = qr_string
 
         normalized_result = dict(result)
         normalized_result["payment"] = normalized_payment
