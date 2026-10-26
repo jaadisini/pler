@@ -25,7 +25,7 @@ from services.qrcode import generate_qr
 
 logger = logging.getLogger(__name__)
 
-ALL_VIP_PRICE = 50000
+ALL_VIP_PRICE = 100.000
 MAX_ERROR_LENGTH = 1000
 
 
