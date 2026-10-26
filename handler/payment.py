@@ -1,6 +1,5 @@
 from datetime import datetime
 import logging
-import html
 
 from pyrogram import Client, filters
 from pyrogram.types import (
@@ -52,15 +51,12 @@ async def send_payment_error(callback_query, error):
     )
 
     message = (
-        "❌ <b>Gagal memproses pembayaran.</b>\n\n"
-        f"<code>{html.escape(safe_error_text(error))}</code>"
+        "❌ Gagal memproses pembayaran.\n\n"
+        f"{safe_error_text(error)}"
     )
 
     try:
-        await callback_query.message.reply_text(
-            message,
-            parse_mode="HTML",  # Diubah dari "html" ke "HTML"
-        )
+        await callback_query.message.reply_text(message)
     except Exception:
         logger.exception("Gagal mengirim pesan error ke pengguna")
 
@@ -292,11 +288,11 @@ async def create_payment(
             package_title = f"📦 Channel: {channel_names}"
 
         caption_text = (
-            "💳 <b>Pembayaran VIP (Saweria)</b>\n\n"
-            f"{html.escape(package_title)}\n"
-            f"📋 <b>Detail VIP:</b> {html.escape(channel_names)}\n"
-            f"💰 <b>Nominal:</b> Rp {amount:,}\n\n"
-            f"🆔 <b>Invoice:</b> <code>{html.escape(transaction_id)}</code>\n\n"
+            "💳 Pembayaran VIP (Saweria)\n\n"
+            f"{package_title}\n"
+            f"📋 Detail VIP: {channel_names}\n"
+            f"💰 Nominal: Rp {amount:,}\n\n"
+            f"🆔 Invoice: {transaction_id}\n\n"
             "Scan QR di atas atau tekan tombol Link Pembayaran. "
             "Setelah membayar, tekan Cek Pembayaran."
         )
@@ -305,7 +301,6 @@ async def create_payment(
             photo=qr,
             caption=caption_text,
             reply_markup=keyboard,
-            parse_mode="HTML",  # Diubah dari "html" ke "HTML"
         )
 
         # =====================================
@@ -314,22 +309,17 @@ async def create_payment(
 
         try:
             admin_log_msg = (
-                "🔔 <b>LOG PEMBAYARAN BARU (SAWERIA)</b>\n\n"
-                f"👤 <b>User:</b> {user.mention} "
-                f"(<code>{user.id}</code>)\n"
-                f"🏷 <b>Username:</b> "
-                f"@{html.escape(user.username or '-')}\n"
-                f"📺 <b>Channel/Bundle:</b> "
-                f"{html.escape(package_title)}\n"
-                f"💰 <b>Nominal:</b> Rp {amount:,}\n"
-                f"🆔 <b>Invoice:</b> "
-                f"<code>{html.escape(transaction_id)}</code>"
+                "🔔 LOG PEMBAYARAN BARU (SAWERIA)\n\n"
+                f"👤 User: {user.first_name} ({user.id})\n"
+                f"🏷 Username: @{user.username or '-'}\n"
+                f"📺 Channel/Bundle: {package_title}\n"
+                f"💰 Nominal: Rp {amount:,}\n"
+                f"🆔 Invoice: {transaction_id}"
             )
 
             await client.send_message(
                 chat_id=OWNER_ID,
                 text=admin_log_msg,
-                parse_mode="HTML",  # Diubah dari "html" ke "HTML"
             )
 
         except Exception:
@@ -456,8 +446,8 @@ async def check_payment(
                 )
 
                 invite_links.append(
-                    f"• <b>{html.escape(str(channel['name']))}</b>:\n"
-                    f"{html.escape(invite.invite_link)}"
+                    f"• {str(channel['name'])}:\n"
+                    f"{invite.invite_link}"
                 )
 
                 channel_names.append(str(channel["name"]))
@@ -475,24 +465,21 @@ async def check_payment(
         )
 
         success_text = (
-            "✅ <b>PEMBAYARAN BERHASIL</b>\n\n"
+            "✅ PEMBAYARAN BERHASIL\n\n"
             "Berikut link akses VIP kamu:\n\n"
             f"{invite_str}\n\n"
-            "<i>Link undangan bersifat sekali pakai "
-            "untuk setiap channel.</i>"
+            "Link undangan bersifat sekali pakai untuk setiap channel."
         )
 
         # Kirim hasil kepada pembeli
         try:
             await callback_query.edit_message_caption(
                 caption=success_text,
-                parse_mode="HTML",  # Diubah dari "html" ke "HTML"
             )
         except Exception:
             try:
                 await callback_query.message.reply_text(
                     success_text,
-                    parse_mode="HTML",  # Diubah dari "html" ke "HTML"
                     disable_web_page_preview=True,
                 )
             except Exception:
@@ -522,23 +509,19 @@ async def check_payment(
         )
 
         log_text = (
-            "🔔 <b>TESTIMONI — NAKA VIP</b>\n"
+            "🔔 TESTIMONI — NAKA VIP\n"
             "━━━━━━━━━━━━━━━━━━\n"
-            f"🗓 <b>Tanggal:</b> {waktu}\n"
-            f"👤 <b>Buyer:</b> "
-            f"{html.escape(user.first_name)} "
-            f"{html.escape(user.last_name or '')}\n"
-            f"🆔 <b>ID Buyer:</b> <code>{user.id}</code>\n"
-            f"📨 <b>Username:</b> "
-            f"@{html.escape(user.username or '-')}\n"
-            f"🛍 <b>VIP:</b> {html.escape(bought_channels_str)}\n"
-            f"🧾 <b>Order ID:</b> "
-            f"<code>{html.escape(transaction_id)}</code>\n"
-            f"💰 <b>Total:</b> Rp {unique_amount:,}\n"
-            "🏦 <b>Metode:</b> Saweria\n"
+            f"🗓 Tanggal: {waktu}\n"
+            f"👤 Buyer: {user.first_name} {user.last_name or ''}\n"
+            f"🆔 ID Buyer: {user.id}\n"
+            f"📨 Username: @{user.username or '-'}\n"
+            f"🛍 VIP: {bought_channels_str}\n"
+            f"🧾 Order ID: {transaction_id}\n"
+            f"💰 Total: Rp {unique_amount:,}\n"
+            "🏦 Metode: Saweria\n"
             "━━━━━━━━━━━━━━━━━━\n\n"
             "Terima kasih sudah order layanan bot VIP kami.\n\n"
-            "👋🏻 <b>Pengen Order Cepat?</b>\n"
+            "👋🏻 Pengen Order Cepat?\n"
             "Transaksi mudah dan otomatis!\n"
             "Silakan klik tombol di bawah 👇"
         )
@@ -561,7 +544,6 @@ async def check_payment(
                 chat_id=int(LOGGER_GROUP_ID),
                 text=log_text,
                 reply_markup=log_keyboard,
-                parse_mode="HTML",  # Diubah dari "html" ke "HTML"
             )
 
         except Exception:
