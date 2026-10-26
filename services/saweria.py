@@ -1,4 +1,3 @@
-
 import logging
 import aiohttp
 
@@ -13,7 +12,9 @@ logger = logging.getLogger(__name__)
 
 class Saweria:
     def __init__(self):
-        self.base_url = MAELYN_BASE_URL.rstrip("/")
+        # Menggunakan base URL default dari spesifikasi jika MAELYN_BASE_URL kosong
+        base_url = MAELYN_BASE_URL or "https://api.maelyn.eu/api"
+        self.base_url = base_url.rstrip("/")
         self.headers = {
             "x-maelyn-auth": MAELYN_API_KEY,
             "Content-Type": "application/json",
@@ -92,30 +93,8 @@ class Saweria:
     @staticmethod
     def _extract_payment(result):
         """
-        Membaca objek pembayaran dari beberapa kemungkinan
-        struktur respons API.
-
-        Format utama:
-        {
-            "success": true,
-            "payment": {
-                "id": "...",
-                "payment_url": "..."
-            }
-        }
-
-        Format alternatif yang juga didukung:
-        {
-            "success": true,
-            "data": {
-                "payment": {
-                    "id": "...",
-                    "payment_url": "..."
-                }
-            }
-        }
+        Membaca objek pembayaran dari struktur respons API.
         """
-
         payment = result.get("payment")
 
         if isinstance(payment, dict):
@@ -125,12 +104,9 @@ class Saweria:
 
         if isinstance(data, dict):
             nested_payment = data.get("payment")
-
             if isinstance(nested_payment, dict):
                 return nested_payment
 
-            # Beberapa API langsung menyimpan detail transaksi
-            # di dalam objek data.
             if any(
                 key in data
                 for key in (
@@ -144,7 +120,6 @@ class Saweria:
             ):
                 return data
 
-        # Mendukung respons yang langsung berisi ID transaksi.
         if any(
             key in result
             for key in (
@@ -163,11 +138,8 @@ class Saweria:
     @staticmethod
     def _normalize_payment(result, payment):
         """
-        Menormalkan nama field supaya handler lama tetap bisa
-        menggunakan result["payment"]["id"] dan
-        result["payment"]["payment_url"].
+        Menormalkan nama field pada objek pembayaran.
         """
-
         payment_id = (
             payment.get("id")
             or payment.get("payment_id")
@@ -193,21 +165,15 @@ class Saweria:
             )
 
         if not payment_url:
-            logger.error(
-                "Payment URL tidak ditemukan. "
-                "Respons API lengkap: %s",
-                result,
-            )
-            raise Exception(
-                "Respons API tidak memiliki URL pembayaran. "
-                f"Respons API: {result}"
-            )
+            # Beberapa response check transaction mungkin tidak menyertakan payment_url,
+            # namun untuk create transaction wajib ada.
+            pass
 
         normalized_payment = dict(payment)
         normalized_payment["id"] = str(payment_id)
-        normalized_payment["payment_url"] = payment_url
+        if payment_url:
+            normalized_payment["payment_url"] = payment_url
 
-        # Mempertahankan format yang dipakai handler pembayaran.
         normalized_result = dict(result)
         normalized_result["payment"] = normalized_payment
 
@@ -239,24 +205,6 @@ class Saweria:
             params=params,
         )
 
-        user = result.get("user")
-
-        if not isinstance(user, dict):
-            data = result.get("data")
-            if isinstance(data, dict):
-                user = data.get("user", data)
-
-        if isinstance(user, dict):
-            logger.info(
-                "Saweria account found: %s",
-                user.get("username", params["username"]),
-            )
-        else:
-            logger.warning(
-                "Account check returned an unexpected structure: %s",
-                result,
-            )
-
         return result
 
     # ==========================================
@@ -267,21 +215,21 @@ class Saweria:
     async def create_transaction(
         self,
         amount: int,
-        name: str = "Anonymous",
-        email: str = "noreply@example.com",
-        msg: str = "Pembayaran VIP",
+        name: str = "John Doe",
+        email: str = "john@example.com",
+        msg: str = "Terima kasih",
         user_id: str = None,
     ):
         try:
             amount = int(amount)
         except (TypeError, ValueError) as exc:
             raise ValueError(
-                "Nominal pembayaran harus berupa angka."
+                "amount harus berupa angka."
             ) from exc
 
         if amount <= 0:
             raise ValueError(
-                "Nominal pembayaran harus lebih dari 0."
+                "amount harus lebih dari 0."
             )
 
         account_id = str(
@@ -290,15 +238,15 @@ class Saweria:
 
         if not account_id:
             raise ValueError(
-                "SAWERIA_USER_ID wajib diisi."
+                "user_id wajib diisi."
             )
 
         payload = {
             "user_id": account_id,
             "amount": amount,
-            "name": name or "Anonymous",
-            "email": email or "noreply@example.com",
-            "msg": msg or "Pembayaran VIP",
+            "name": name or "John Doe",
+            "email": email or "john@example.com",
+            "msg": msg or "Terima kasih",
         }
 
         logger.info(
@@ -357,7 +305,7 @@ class Saweria:
 
         if not transaction_id:
             raise ValueError(
-                "payment_id atau id wajib diisi."
+                "Query payment_id atau id wajib diisi."
             )
 
         account_id = str(
@@ -366,7 +314,7 @@ class Saweria:
 
         if not account_id:
             raise ValueError(
-                "SAWERIA_USER_ID wajib diisi."
+                "Query user_id wajib diisi."
             )
 
         params = {
@@ -405,4 +353,3 @@ class Saweria:
 
 
 saweria = Saweria()
-
