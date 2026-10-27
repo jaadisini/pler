@@ -322,7 +322,7 @@ async def create_payment(
         )
 
         # =====================================
-        # LOG PEMBAYARAN ADMIN
+        # LOG PEMBAYARAN ADMIN (DENGAN TOMBOL ACC MANUAL)
         # =====================================
 
         try:
@@ -335,9 +335,21 @@ async def create_payment(
                 f"🆔 Invoice: {transaction_id}"
             )
 
+            admin_keyboard = InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "✅ ACC Manual",
+                            callback_data=f"manual_acc:{transaction_id}"
+                        )
+                    ]
+                ]
+            )
+
             await client.send_message(
                 chat_id=OWNER_ID,
                 text=admin_log_msg,
+                reply_markup=admin_keyboard,
             )
 
         except Exception:
@@ -347,6 +359,191 @@ async def create_payment(
 
     except Exception as error:
         await send_payment_error(callback_query, error)
+
+
+# ==================================
+# MANUAL ACC PAYMENT (KHUSUS OWNER)
+# ==================================
+
+@app.on_callback_query(filters.regex(r"^manual_acc:"))
+async def manual_acc_payment(
+    client: Client,
+    callback_query: CallbackQuery,
+):
+    if callback_query.from_user.id != OWNER_ID:
+        return await callback_query.answer(
+            "❌ Perintah ini hanya dapat diakses oleh Owner!",
+            show_alert=True,
+        )
+
+    transaction_id = callback_query.data.split(":", 1)[1]
+    await callback_query.answer()
+
+    order = await get_order(transaction_id)
+
+    if not order:
+        return await callback_query.answer(
+            "❌ Order tidak ditemukan di database.",
+            show_alert=True,
+        )
+
+    order_status = str(get_field(order, "status", "")).lower()
+
+    if order_status == "paid":
+        return await callback_query.answer(
+            "✅ Pembayaran ini sudah pernah diproses sebelumnya.",
+            show_alert=True,
+        )
+
+    # Update status order menjadi paid
+    await update_order_status(transaction_id, "paid")
+
+    raw_channel_ids = str(
+        get_field(order, "channel_id", "")
+    ).split(",")
+
+    invite_links = []
+    channel_names = []
+
+    for channel_id_str in raw_channel_ids:
+        channel_id_str = channel_id_str.strip()
+
+        if not channel_id_str:
+            continue
+
+        try:
+            channel = await get_channel(int(channel_id_str))
+        except Exception:
+            logger.exception(
+                "Gagal mengambil data channel %s",
+                channel_id_str,
+            )
+            continue
+
+        if not channel:
+            continue
+
+        try:
+            invite = await client.create_chat_invite_link(
+                chat_id=int(get_field(channel, "channel_id")),
+                member_limit=1,
+            )
+
+            ch_name = str(get_field(channel, "name", "Channel"))
+            invite_links.append(
+                f"• {ch_name}:\n"
+                f"{invite.invite_link}"
+            )
+            channel_names.append(ch_name)
+
+        except Exception:
+            logger.exception(
+                "Gagal membuat invite link channel %s",
+                channel_id_str,
+            )
+
+    invite_str = (
+        "\n\n".join(invite_links)
+        if invite_links
+        else "Hubungi admin untuk mendapatkan link akses."
+    )
+
+    success_text = (
+        "✅ PEMBAYARAN DISETUJUI (MANUAL ACC)\n\n"
+        "Berikut link akses VIP kamu:\n\n"
+        f"{invite_str}\n\n"
+        "Link undangan bersifat sekali pakai untuk setiap channel."
+    )
+
+    buyer_id = int(get_field(order, "user_id"))
+
+    # Kirim hasil kepada pembeli
+    try:
+        await client.send_message(
+            chat_id=buyer_id,
+            text=success_text,
+            disable_web_page_preview=True,
+        )
+    except Exception:
+        logger.exception(
+            "Gagal mengirim link VIP kepada user %s via manual acc",
+            buyer_id,
+        )
+
+    # Ubah pesan log admin agar tombol ACC hilang / menandakan sudah di-acc
+    try:
+        updated_log_text = callback_query.message.text + "\n\n✨ Status: DI-ACC MANUAL OLEH OWNER ✅"
+        await callback_query.edit_message_text(
+            text=updated_log_text,
+            reply_markup=None,
+        )
+    except Exception:
+        pass
+
+    # =====================================
+    # LOG TESTIMONI KE GRUP
+    # =====================================
+
+    waktu = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    bought_channels_str = (
+        ", ".join(channel_names)
+        if channel_names
+        else str(get_field(order, "channel_id", ""))
+    )
+
+    unique_amount = int(
+        get_field(order, "unique_amount") or get_field(order, "amount") or 0
+    )
+    buyer_username = get_field(order, "username", "-")
+
+    log_text = (
+        "🔔 TESTIMONI — NAKA VIP (MANUAL ACC)\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"🗓 Tanggal: {waktu}\n"
+        f"🆔 ID Buyer: {buyer_id}\n"
+        f"📨 Username: @{buyer_username or '-'}\n"
+        f"🛍 VIP: {bought_channels_str}\n"
+        f"🧾 Order ID: {transaction_id}\n"
+        f"💰 Total: Rp {unique_amount:,}\n"
+        "🏦 Metode: Saweria (Manual ACC)\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "Terima kasih sudah order layanan bot VIP kami.\n\n"
+        "👋🏻 Pengen Order Cepat?\n"
+        "Transaksi mudah dan otomatis!\n"
+        "Silakan klik tombol di bawah 👇"
+    )
+
+    try:
+        bot_info = await client.get_me()
+
+        log_keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🛒 Hubungi Bot / Order",
+                        url=f"https://t.me/{bot_info.username}",
+                    )
+                ]
+            ]
+        )
+
+        await client.send_message(
+            chat_id=int(LOGGER_GROUP_ID),
+            text=log_text,
+            reply_markup=log_keyboard,
+        )
+
+    except Exception:
+        logger.exception(
+            "Gagal mengirim log testimoni manual acc ke grup %s",
+            LOGGER_GROUP_ID,
+        )
+
+    return await callback_query.answer(
+        "✅ Berhasil melakukan ACC manual pembayaran!",
+        show_alert=True,
+    )
 
 
 # ==================================
