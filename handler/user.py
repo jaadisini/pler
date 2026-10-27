@@ -11,6 +11,7 @@ from pyrogram.types import (
 )
 
 from app import app
+from config import OWNER_ID
 from database import (
     add_user,
     clear_user_bundle,
@@ -419,15 +420,15 @@ async def show_livechat_menu(callback_query: CallbackQuery):
 # Meneruskan pesan user ke admin
 @app.on_message(filters.private & ~filters.user(ADMIN_ID) & ~filters.command(["start", "myorder"]))
 async def forward_to_admin(client: Client, message: Message):
-    if not ADMIN_ID:
+    if not OWNER_ID:
         await message.reply_text("⚠️ Livechat sedang tidak aktif (Admin ID belum diatur).")
         return
 
     user = message.from_user
-    forwarded = await message.forward(ADMIN_ID)
+    forwarded = await message.forward(OWNER_ID)
 
     await client.send_message(
-        chat_id=ADMIN_ID,
+        chat_id=OWNER_ID,
         text=(
             f"📩 <b>Pesan Masuk dari User:</b>\n"
             f"• Nama: {user.first_name} {user.last_name or ''}\n"
