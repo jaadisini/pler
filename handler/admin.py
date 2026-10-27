@@ -46,14 +46,42 @@ async def add_channel_cmd(client: Client, message: Message):
 
 
 # =====================================
-# ADMIN TEXT HANDLER (Logic State Teks)
+# ADMIN TEXT HANDLER (Logic State Teks & Livechat Reply)
 # =====================================
 
-@app.on_message(filters.text & ~filters.command(["start", "help", "backup", "restore", "cancel_restore", "listchannel", "delchannel", "setprice", "broadcast", "update"]) & admin_filter)
+@app.on_message(filters.text & ~filters.command(["start", "help", "backup", "restore", "cancel_restore", "listchannel", "delchannel", "setprice", "broadcast", "update", "livechat"]) & admin_filter)
 async def admin_text(client: Client, message: Message):
     user_id = message.from_user.id
-    state_data = ADMIN_STATE.get(user_id)
+    
+    # 1. Cek apakah admin sedang membalas pesan user (Fitur Livechat Admin)
+    if message.reply_to_message:
+        replied_msg = message.reply_to_message
+        target_user_id = None
 
+        if replied_msg.forward_from:
+            target_user_id = replied_msg.forward_from.id
+        elif replied_msg.caption and "ID:" in replied_msg.caption:
+            try:
+                for line in replied_msg.caption.split("\n"):
+                    if "ID:" in line:
+                        target_user_id = int(line.split("`")[1])
+            except Exception:
+                pass
+
+        if not target_user_id and replied_msg.reply_to_message and replied_msg.reply_to_message.forward_from:
+            target_user_id = replied_msg.reply_to_message.forward_from.id
+
+        if target_user_id:
+            try:
+                await message.copy(chat_id=target_user_id)
+                await message.reply_text("✅ Balasan berhasil dikirim ke user.", quote=True)
+                return
+            except Exception as e:
+                await message.reply_text(f"❌ Gagal mengirim pesan ke user: {e}", quote=True)
+                return
+
+    # 2. Cek apakah admin sedang berada di state add_channel
+    state_data = ADMIN_STATE.get(user_id)
     if not state_data:
         return
 
@@ -94,14 +122,39 @@ async def admin_text(client: Client, message: Message):
 
 
 # =====================================
-# ADMIN PHOTO HANDLER (Langkah 2: Foto Channel)
+# ADMIN PHOTO HANDLER (Langkah 2: Foto Channel / Livechat Media)
 # =====================================
 
 @app.on_message(filters.photo & admin_filter)
 async def admin_photo(client: Client, message: Message):
     user_id = message.from_user.id
-    state_data = ADMIN_STATE.get(user_id)
+    
+    # Cek apakah admin mengirim foto untuk livechat (reply pesan user)
+    if message.reply_to_message:
+        replied_msg = message.reply_to_message
+        target_user_id = None
 
+        if replied_msg.forward_from:
+            target_user_id = replied_msg.forward_from.id
+        elif replied_msg.caption and "ID:" in replied_msg.caption:
+            try:
+                for line in replied_msg.caption.split("\n"):
+                    if "ID:" in line:
+                        target_user_id = int(line.split("`")[1])
+            except Exception:
+                pass
+
+        if target_user_id:
+            try:
+                await message.copy(chat_id=target_user_id)
+                await message.reply_text("✅ Media balasan berhasil dikirim ke user.", quote=True)
+                return
+            except Exception as e:
+                await message.reply_text(f"❌ Gagal mengirim media ke user: {e}", quote=True)
+                return
+
+    # Jika sedang dalam state add channel photo
+    state_data = ADMIN_STATE.get(user_id)
     if not state_data or state_data.get("state") != "ADD_CHANNEL_PHOTO":
         return
 
@@ -145,7 +198,6 @@ async def update_script_cmd(client: Client, message: Message):
     status_msg = await message.reply_text("🔄 **Memeriksa dan menarik pembaruan dari repository Git...**")
 
     try:
-        # Jalankan git pull secara asynchronous
         process = await asyncio.create_subprocess_exec(
             "git", "pull",
             stdout=asyncio.subprocess.PIPE,
@@ -165,7 +217,6 @@ async def update_script_cmd(client: Client, message: Message):
             "🔄 **Melakukan restart bot otomatis...**"
         )
 
-        # Restart proses bot
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
     except Exception as e:
@@ -316,11 +367,9 @@ async def receive_restore_file(client: Client, message: Message):
 
 @app.on_message(filters.command("broadcast") & admin_filter & filters.private)
 async def execute_broadcast(client: Client, message: Message):
-    # Validasi apakah user melakukan reply ke pesan yang mau disiarkan
     if not message.reply_to_message:
         return await message.reply_text("❌ **Reply Goblok**")
 
-    # Mengambil list user_id dari fungsi get_all_users()
     users = await get_all_users()
     if not users:
         return await message.reply_text("📭 Belum ada database user yang terekam.")
@@ -336,10 +385,9 @@ async def execute_broadcast(client: Client, message: Message):
 
     for chat_id in users:
         try:
-            # Mengirim salinan pesan secara utuh ke setiap user ID
             await broadcast_msg.copy(chat_id=int(chat_id))
             successful += 1
-            await asyncio.sleep(0.05)  # Delay 50ms anti-spam limit telegram
+            await asyncio.sleep(0.05) 
         except FloodWait as e:
             await asyncio.sleep(e.value)
             await broadcast_msg.copy(chat_id=int(chat_id))
