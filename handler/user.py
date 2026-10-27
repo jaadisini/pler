@@ -25,7 +25,8 @@ from database import (
 # KONSTANTA & KEYBOARD UTAMA
 # ==================================
 
-ALL_VIP_PRICE = 30000  # Harga paket Beli Semua VIP (Rp 100.000)
+ALL_VIP_PRICE = 100000  # Harga paket Beli Semua VIP
+ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))  # ⚠️ Ganti dengan ID Telegram Admin Anda
 
 START_CAPTION = (
     "Hello.\n"
@@ -55,7 +56,7 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
-                text=f"🔥 Beli Semua VIP",
+                text="🔥 Beli Semua VIP",
                 callback_data="buy:all",
                 style=enums.ButtonStyle.SUCCESS,
             ),
@@ -66,6 +67,11 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
                 callback_data="help",
                 style=enums.ButtonStyle.PRIMARY,
                 icon_custom_emoji_id="5805434498602506971",
+            ),
+            InlineKeyboardButton(
+                text="💬 Livechat Admin",
+                callback_data="livechat",
+                style=enums.ButtonStyle.PRIMARY,
             ),
         ],
     ])
@@ -132,7 +138,6 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
         for channel in current_channels
     ]
 
-    # Tombol Akses Semua VIP
     keyboard.append([
         InlineKeyboardButton(
             text=f"🔥 Beli Semua Channel VIP",
@@ -195,7 +200,6 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
 async def show_bundle_menu(callback_query: CallbackQuery, page: int = 1):
     user_id = callback_query.from_user.id
     
-    # Ambil data keranjang bundle langsung dari database
     selected_ids = set(await get_user_bundle(user_id))
 
     channels = await get_channels()
@@ -375,7 +379,7 @@ async def show_help(callback_query: CallbackQuery):
         "3. Lanjutkan ke proses pembayaran QRIS yang dikirim bot.\n"
         "4. Tekan <b>🔄 Cek Pembayaran</b>.\n"
         "5. Sistem akan otomatis memasukkan Anda ke akses Channel VIP.\n\n"
-        "Jika mengalami kendala, silakan hubungi admin."
+        "Jika mengalami kendala, silakan hubungi admin melalui menu Livechat."
     )
 
     await callback_query.edit_message_media(
@@ -385,13 +389,97 @@ async def show_help(callback_query: CallbackQuery):
 
 
 # ==================================
+# LIVECHAT ADMIN HANDLERS
+# ==================================
+
+
+async def show_livechat_menu(callback_query: CallbackQuery):
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                text="« Kembali ke Menu Utama",
+                callback_data="home",
+                style=enums.ButtonStyle.DANGER,
+            )
+        ]
+    ])
+
+    caption = (
+        "💬 <b>LIVECHAT DENGAN ADMIN</b>\n\n"
+        "Silakan kirimkan pesan, pertanyaan, atau kendala Anda (bisa berupa teks, foto, atau bukti transfer) langsung di chat ini.\n\n"
+        "<i>Admin akan segera membalas pesan Anda.</i>"
+    )
+
+    await callback_query.edit_message_media(
+        media=InputMediaPhoto("assets/welcome.jpg", caption=caption),
+        reply_markup=keyboard,
+    )
+
+
+# Meneruskan pesan user ke admin
+@app.on_message(filters.private & ~filters.user(ADMIN_ID) & ~filters.command(["start", "myorder"]))
+async def forward_to_admin(client: Client, message: Message):
+    if not ADMIN_ID:
+        await message.reply_text("⚠️ Livechat sedang tidak aktif (Admin ID belum diatur).")
+        return
+
+    user = message.from_user
+    forwarded = await message.forward(ADMIN_ID)
+
+    await client.send_message(
+        chat_id=ADMIN_ID,
+        text=(
+            f"📩 <b>Pesan Masuk dari User:</b>\n"
+            f"• Nama: {user.first_name} {user.last_name or ''}\n"
+            f"• Username: @{user.username or 'Tidak ada'}\n"
+            f"• ID: `{user.id}`\n\n"
+            f"<i>(Balas pesan ini untuk merespons user)</i>"
+        ),
+        reply_to_message_id=forwarded.id,
+    )
+    await message.reply_text("✅ Pesan Anda telah dikirim ke Admin. Mohon tunggu balasan selanjutnya.")
+
+
+# Balasan admin ke user (Admin mereply pesan/forward user)
+@app.on_message(filters.private & filters.user(ADMIN_ID) & filters.reply)
+async def reply_from_admin(client: Client, message: Message):
+    replied_msg = message.reply_to_message
+    if not replied_msg:
+        return
+
+    target_user_id = None
+
+    if replied_msg.forward_from:
+        target_user_id = replied_msg.forward_from.id
+    elif replied_msg.caption and "ID:" in replied_msg.caption:
+        try:
+            for line in replied_msg.caption.split("\n"):
+                if "ID:" in line:
+                    target_user_id = int(line.split("`")[1])
+        except Exception:
+            pass
+
+    if not target_user_id and replied_msg.reply_to_message and replied_msg.reply_to_message.forward_from:
+        target_user_id = replied_msg.reply_to_message.forward_from.id
+
+    if target_user_id:
+        try:
+            await message.copy(chat_id=target_user_id)
+            await message.reply_text("✅ Balasan berhasil dikirim ke user.", quote=True)
+        except Exception as e:
+            await message.reply_text(f"❌ Gagal mengirim pesan ke user: {e}", quote=True)
+    else:
+        await message.reply_text("⚠️ Gagal mendeteksi ID user. Pastikan Anda melakukan Reply pada pesan yang diteruskan dari user.", quote=True)
+
+
+# ==================================
 # CALLBACK ROUTER
 # ==================================
 
 
 @app.on_callback_query(
     filters.regex(
-        r"^(vip(:\d+)?|home|help|view:\d+|vip_populer|bundle(:\d+)?|toggle_bundle:\d+:\d+|buy_bundle|clear_bundle|buy:all)$"
+        r"^(vip(:\d+)?|home|help|view:\d+|vip_populer|bundle(:\d+)?|toggle_bundle:\d+:\d+|buy_bundle|clear_bundle|buy:all|livechat)$"
     )
 )
 async def user_callback(client: Client, callback_query: CallbackQuery):
@@ -420,12 +508,10 @@ async def user_callback(client: Client, callback_query: CallbackQuery):
         ch_id = int(ch_id_str)
         page = int(page_str)
 
-        # Toggle item di database
         await toggle_user_bundle(user_id, ch_id)
         await show_bundle_menu(callback_query, page)
 
     elif data == "clear_bundle":
-        # Bersihkan item di database
         await clear_user_bundle(user_id)
         await callback_query.answer("🧹 Pilihan bundle dibersihkan.")
         await show_bundle_menu(callback_query, 1)
@@ -442,6 +528,9 @@ async def user_callback(client: Client, callback_query: CallbackQuery):
 
     elif data == "help":
         await show_help(callback_query)
+
+    elif data == "livechat":
+        await show_livechat_menu(callback_query)
 
     elif data.startswith("view:"):
         channel_id = int(data.split(":")[1])
@@ -483,4 +572,4 @@ async def myorder_cmd(client: Client, message: Message):
         f"🆔 {order['transaction_id']}\n"
         f"💰 Rp {order['unique_amount']:,}\n"
         f"{emoji} Status : <b>{status.upper()}</b>"
-                                 )
+    )
