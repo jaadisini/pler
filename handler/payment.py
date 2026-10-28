@@ -204,7 +204,7 @@ async def create_payment(
     )
 
     # =====================================
-    # CREATE PAYMENT MAELYN API
+    # CREATE PAYMENT SAWERIA API
     # =====================================
 
     try:
@@ -222,24 +222,26 @@ async def create_payment(
 
         if not isinstance(result, dict):
             raise ValueError(
-                "Respons Maelyn API bukan objek JSON yang valid."
+                "Respons API Saweria bukan objek JSON yang valid."
             )
 
-        payment_data = result.get("payment", {})
+        # Mengambil data payment atau langsung dari root dictionary jika struktur berbeda
+        payment_data = result.get("payment") or result.get("data") or result
 
         if not isinstance(payment_data, dict):
             raise ValueError(
-                "Format data pembayaran dari Maelyn API tidak valid."
+                "Format data pembayaran dari API Saweria tidak valid."
             )
 
-        transaction_id = payment_data.get("id")
-        payment_url = payment_data.get("payment_url")
-        qr_string = payment_data.get("qr_string")
+        # Mengambil payment_id atau id langsung dari respons saweria
+        transaction_id = payment_data.get("payment_id") or payment_data.get("id")
+        payment_url = payment_data.get("payment_url") or payment_data.get("url")
+        qr_string = payment_data.get("qr_string") or payment_data.get("qris_string")
         amount = int(payment_data.get("amount") or total_price)
 
         if not transaction_id or not payment_url:
             raise ValueError(
-                "ID transaksi atau URL pembayaran tidak ditemukan."
+                "ID transaksi (payment_id) atau URL pembayaran tidak ditemukan dari respons Saweria."
             )
 
         transaction_id = str(transaction_id)
@@ -577,7 +579,7 @@ async def check_payment(
         )
 
     # =====================================
-    # CEK STATUS MAELYN API
+    # CEK STATUS SAWERIA API
     # =====================================
 
     try:
@@ -591,7 +593,7 @@ async def check_payment(
                 "Respons pemeriksaan transaksi tidak valid."
             )
 
-        payment = result.get("payment", {})
+        payment = result.get("payment") or result.get("data") or result
 
         if not isinstance(payment, dict):
             payment = {}
