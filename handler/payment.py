@@ -85,6 +85,159 @@ async def send_payment_error(callback_query, error):
 
 
 # =====================================
+# HELPER: PROSES SUKSES PEMBAYARAN & LINK
+# =====================================
+
+async def process_successful_payment(
+    client: Client,
+    callback_query: CallbackQuery,
+    order,
+    transaction_id: str,
+):
+    """Memproses order yang sudah paid: membuat invite link, update DB, kirim pesan & testimoni."""
+    order_status = str(get_field(order, "status", "")).lower()
+
+    if order_status == "paid":
+        return
+
+    await update_order_status(transaction_id, "paid")
+
+    raw_channel_ids = str(
+        get_field(order, "channel_id", "")
+    ).split(",")
+
+    invite_links = []
+    channel_names = []
+
+    for channel_id_str in raw_channel_ids:
+        channel_id_str = channel_id_str.strip()
+
+        if not channel_id_str:
+            continue
+
+        try:
+            channel = await get_channel(int(channel_id_str))
+        except Exception:
+            logger.exception(
+                "Gagal mengambil data channel %s",
+                channel_id_str,
+            )
+            continue
+
+        if not channel:
+            continue
+
+        try:
+            invite = await client.create_chat_invite_link(
+                chat_id=int(get_field(channel, "channel_id")),
+                member_limit=1,
+            )
+
+            ch_name = str(get_field(channel, "name", "Channel"))
+            invite_links.append(
+                f"• {ch_name}:\n"
+                f"{invite.invite_link}"
+            )
+            channel_names.append(ch_name)
+
+        except Exception:
+            logger.exception(
+                "Gagal membuat invite link channel %s",
+                channel_id_str,
+            )
+
+    invite_str = (
+        "\n\n".join(invite_links)
+        if invite_links
+        else "Hubungi admin untuk mendapatkan link akses."
+    )
+
+    success_text = (
+        "✅ PEMBAYARAN BERHASIL\n\n"
+        "Berikut link akses VIP kamu:\n\n"
+        f"{invite_str}\n\n"
+        "Link undangan bersifat sekali pakai untuk setiap channel."
+    )
+
+    # Kirim hasil kepada pembeli via edit pesan QR atau reply
+    try:
+        await callback_query.edit_message_caption(
+            caption=success_text,
+        )
+    except Exception:
+        try:
+            await callback_query.message.reply_text(
+                success_text,
+                disable_web_page_preview=True,
+            )
+        except Exception:
+            logger.exception(
+                "Gagal mengirim link VIP kepada user %s",
+                callback_query.from_user.id,
+            )
+
+    # =====================================
+    # LOG TESTIMONI KE GRUP
+    # =====================================
+    user = callback_query.from_user
+    waktu = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    bought_channels_str = (
+        ", ".join(channel_names)
+        if channel_names
+        else str(get_field(order, "channel_id", ""))
+    )
+
+    unique_amount = int(
+        get_field(order, "unique_amount") or get_field(order, "amount") or 0
+    )
+
+    log_text = (
+        "🔔 TESTIMONI — NAKA VIP\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"🗓 Tanggal: {waktu}\n"
+        f"👤 Buyer: {user.first_name} {user.last_name or ''}\n"
+        f"🆔 ID Buyer: {user.id}\n"
+        f"📨 Username: @{user.username or '-'}\n"
+        f"🛍 VIP: {bought_channels_str}\n"
+        f"🧾 Order ID: {transaction_id}\n"
+        f"💰 Total: Rp {unique_amount:,}\n"
+        "🏦 Metode: Saweria (Auto/Verified)\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "Terima kasih sudah order layanan bot VIP kami.\n\n"
+        "👋🏻 Pengen Order Cepat?\n"
+        "Transaksi mudah dan otomatis!\n"
+        "Silakan klik tombol di bawah 👇"
+    )
+
+    try:
+        bot_info = await client.get_me()
+
+        log_keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🛒 Hubungi Bot / Order",
+                        url=f"https://t.me/{bot_info.username}",
+                    )
+                ]
+            ]
+        )
+
+        await client.send_message(
+            chat_id=int(LOGGER_GROUP_ID),
+            text=log_text,
+            reply_markup=log_keyboard,
+        )
+
+    except Exception:
+        logger.exception(
+            "Gagal mengirim log testimoni ke grup %s",
+            LOGGER_GROUP_ID,
+        )
+
+
+# =====================================
 # CREATE PAYMENT (SINGLE, BUNDLE & ALL)
 # =====================================
 
@@ -100,7 +253,6 @@ async def create_payment(
 
     await callback_query.answer()
 
-    # Cek order aktif
     try:
         active = await get_active_order(user.id)
     except Exception:
@@ -110,6 +262,18 @@ async def create_payment(
         )
 
     if active:
+        # Cek otomatis apakah order aktif tersebut sudah terbayar di Saweria
+        active_trx_id = get_field(active, "transaction_id") or get_field(active, "order_id")
+        if active_trx_id:
+            try:
+                is_paid = await saweria.check_paid_status(str(active_trx_id))
+                if is_paid:
+                    # Jika ternyata sudah terbayar, langsung proses berikan link akses!
+                    await process_successful_payment(client, callback_query, active, str(active_trx_id))
+                    return
+            except Exception:
+                pass
+
         return await callback_query.message.reply_text(
             "⚠️ Kamu masih memiliki pembayaran aktif."
         )
@@ -118,53 +282,34 @@ async def create_payment(
     is_buy_all = False
     total_price = 0
 
-    # =====================================
-    # 1. BELI SEMUA CHANNEL
-    # =====================================
-
     if data_str == "buy:all":
         all_channels = await get_channels()
-
         if not all_channels:
             return await callback_query.message.reply_text(
                 "❌ Belum ada Channel VIP tersedia."
             )
-
         channels_to_buy = all_channels
         total_price = ALL_VIP_PRICE
         is_buy_all = True
 
-    # =====================================
-    # 2. BELI SATU CHANNEL
-    # =====================================
-
     elif data_str.startswith("buy:"):
         channel_id = int(data_str.split(":", 1)[1])
         channel = await get_channel(channel_id)
-
         if not channel:
             return await callback_query.message.reply_text(
                 "❌ Channel tidak ditemukan."
             )
-
         channels_to_buy.append(channel)
         total_price = int(get_field(channel, "price", 0))
 
-    # =====================================
-    # 3. BELI BUNDLE
-    # =====================================
-
     elif data_str == "buy_bundle":
         selected_ids = await get_user_bundle(user.id)
-
         if not selected_ids:
             return await callback_query.message.reply_text(
                 "⚠️ Silakan pilih minimal satu channel!"
             )
-
         for channel_id in selected_ids:
             channel = await get_channel(channel_id)
-
             if channel:
                 channels_to_buy.append(channel)
 
@@ -177,10 +322,6 @@ async def create_payment(
             int(get_field(channel, "price", 0))
             for channel in channels_to_buy
         )
-
-    # =====================================
-    # VALIDASI CHANNEL DAN NOMINAL
-    # =====================================
 
     if not channels_to_buy:
         return await callback_query.message.reply_text(
@@ -202,22 +343,16 @@ async def create_payment(
         for channel in channels_to_buy
     )
 
-    # =====================================
-    # CREATE PAYMENT SAWERIA API
-    # =====================================
-
     try:
         user_fullname = (
             f"{user.first_name} {user.last_name or ''}"
         ).strip()
 
-        # Menggunakan msg dan message secara bersamaan agar aman dari error keyword argument
         result = await saweria.create_transaction(
             user_id=str(SAWERIA_USER_ID),
             amount=total_price,
             name=user_fullname or f"User_{user.id}",
             email=f"{user.id}@telegram.org",
-            msg=f"VIP Access: {channel_names[:30]}",
             message=f"VIP Access: {channel_names[:30]}",
             creator_name="nsdev",
         )
@@ -238,10 +373,6 @@ async def create_payment(
             )
 
         transaction_id = str(transaction_id)
-
-        # =====================================
-        # SIMPAN ORDER
-        # =====================================
 
         await create_order(
             user.id,
@@ -301,10 +432,6 @@ async def create_payment(
             caption=caption_text,
             reply_markup=keyboard,
         )
-
-        # =====================================
-        # LOG PEMBAYARAN ADMIN
-        # =====================================
 
         try:
             admin_log_msg = (
@@ -376,78 +503,7 @@ async def manual_acc_payment(
             show_alert=True,
         )
 
-    await update_order_status(transaction_id, "paid")
-
-    raw_channel_ids = str(
-        get_field(order, "channel_id", "")
-    ).split(",")
-
-    invite_links = []
-    channel_names = []
-
-    for channel_id_str in raw_channel_ids:
-        channel_id_str = channel_id_str.strip()
-
-        if not channel_id_str:
-            continue
-
-        try:
-            channel = await get_channel(int(channel_id_str))
-        except Exception:
-            logger.exception(
-                "Gagal mengambil data channel %s",
-                channel_id_str,
-            )
-            continue
-
-        if not channel:
-            continue
-
-        try:
-            invite = await client.create_chat_invite_link(
-                chat_id=int(get_field(channel, "channel_id")),
-                member_limit=1,
-            )
-
-            ch_name = str(get_field(channel, "name", "Channel"))
-            invite_links.append(
-                f"• {ch_name}:\n"
-                f"{invite.invite_link}"
-            )
-            channel_names.append(ch_name)
-
-        except Exception:
-            logger.exception(
-                "Gagal membuat invite link channel %s",
-                channel_id_str,
-            )
-
-    invite_str = (
-        "\n\n".join(invite_links)
-        if invite_links
-        else "Hubungi admin untuk mendapatkan link akses."
-    )
-
-    success_text = (
-        "✅ PEMBAYARAN DISETUJUI (MANUAL ACC)\n\n"
-        "Berikut link akses VIP kamu:\n\n"
-        f"{invite_str}\n\n"
-        "Link undangan bersifat sekali pakai untuk setiap channel."
-    )
-
-    buyer_id = int(get_field(order, "user_id"))
-
-    try:
-        await client.send_message(
-            chat_id=buyer_id,
-            text=success_text,
-            disable_web_page_preview=True,
-        )
-    except Exception:
-        logger.exception(
-            "Gagal mengirim link VIP kepada user %s via manual acc",
-            buyer_id,
-        )
+    await process_successful_payment(client, callback_query, order, transaction_id)
 
     try:
         updated_log_text = callback_query.message.text + "\n\n✨ Status: DI-ACC MANUAL OLEH OWNER ✅"
@@ -457,62 +513,6 @@ async def manual_acc_payment(
         )
     except Exception:
         pass
-
-    waktu = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    bought_channels_str = (
-        ", ".join(channel_names)
-        if channel_names
-        else str(get_field(order, "channel_id", ""))
-    )
-
-    unique_amount = int(
-        get_field(order, "unique_amount") or get_field(order, "amount") or 0
-    )
-    buyer_username = get_field(order, "username", "-")
-
-    log_text = (
-        "🔔 TESTIMONI — NAKA VIP (MANUAL ACC)\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        f"🗓 Tanggal: {waktu}\n"
-        f"🆔 ID Buyer: {buyer_id}\n"
-        f"📨 Username: @{buyer_username or '-'}\n"
-        f"🛍 VIP: {bought_channels_str}\n"
-        f"🧾 Order ID: {transaction_id}\n"
-        f"💰 Total: Rp {unique_amount:,}\n"
-        "🏦 Metode: Saweria (Manual ACC)\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        "Terima kasih sudah order layanan bot VIP kami.\n\n"
-        "👋🏻 Pengen Order Cepat?\n"
-        "Transaksi mudah dan otomatis!\n"
-        "Silakan klik tombol di bawah 👇"
-    )
-
-    try:
-        bot_info = await client.get_me()
-
-        log_keyboard = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(
-                        "🛒 Hubungi Bot / Order",
-                        url=f"https://t.me/{bot_info.username}",
-                    )
-                ]
-            ]
-        )
-
-        await client.send_message(
-            chat_id=int(LOGGER_GROUP_ID),
-            text=log_text,
-            reply_markup=log_keyboard,
-        )
-
-    except Exception:
-        logger.exception(
-            "Gagal mengirim log testimoni manual acc ke grup %s",
-            LOGGER_GROUP_ID,
-        )
 
     return await callback_query.answer(
         "✅ Berhasil melakukan ACC manual pembayaran!",
@@ -568,144 +568,8 @@ async def check_payment(
             show_alert=True,
         )
 
-    await update_order_status(
-        transaction_id,
-        "paid",
-    )
-
-    raw_channel_ids = str(
-        get_field(order, "channel_id", "")
-    ).split(",")
-
-    invite_links = []
-    channel_names = []
-
-    for channel_id_str in raw_channel_ids:
-        channel_id_str = channel_id_str.strip()
-
-        if not channel_id_str:
-            continue
-
-        try:
-            channel = await get_channel(int(channel_id_str))
-        except Exception:
-            logger.exception(
-                "Gagal mengambil data channel %s",
-                channel_id_str,
-            )
-            continue
-
-        if not channel:
-            continue
-
-        try:
-            invite = await client.create_chat_invite_link(
-                chat_id=int(get_field(channel, "channel_id")),
-                member_limit=1,
-            )
-
-            ch_name = str(get_field(channel, "name", "Channel"))
-            invite_links.append(
-                f"• {ch_name}:\n"
-                f"{invite.invite_link}"
-            )
-
-            channel_names.append(ch_name)
-
-        except Exception:
-            logger.exception(
-                "Gagal membuat invite link channel %s",
-                channel_id_str,
-            )
-
-    invite_str = (
-        "\n\n".join(invite_links)
-        if invite_links
-        else "Hubungi admin untuk mendapatkan link akses."
-    )
-
-    success_text = (
-        "✅ PEMBAYARAN BERHASIL\n\n"
-        "Berikut link akses VIP kamu:\n\n"
-        f"{invite_str}\n\n"
-        "Link undangan bersifat sekali pakai untuk setiap channel."
-    )
-
-    try:
-        await callback_query.edit_message_caption(
-            caption=success_text,
-        )
-    except Exception:
-        try:
-            await callback_query.message.reply_text(
-                success_text,
-                disable_web_page_preview=True,
-            )
-        except Exception:
-            logger.exception(
-                "Gagal mengirim link VIP kepada user %s",
-                callback_query.from_user.id,
-            )
-
-    user = callback_query.from_user
-
-    waktu = datetime.now().strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
-
-    bought_channels_str = (
-        ", ".join(channel_names)
-        if channel_names
-        else str(get_field(order, "channel_id", ""))
-    )
-
-    unique_amount = int(
-        get_field(order, "unique_amount") or get_field(order, "amount") or 0
-    )
-
-    log_text = (
-        "🔔 TESTIMONI — NAKA VIP\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        f"🗓 Tanggal: {waktu}\n"
-        f"👤 Buyer: {user.first_name} {user.last_name or ''}\n"
-        f"🆔 ID Buyer: {user.id}\n"
-        f"📨 Username: @{user.username or '-'}\n"
-        f"🛍 VIP: {bought_channels_str}\n"
-        f"🧾 Order ID: {transaction_id}\n"
-        f"💰 Total: Rp {unique_amount:,}\n"
-        "🏦 Metode: Saweria\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        "Terima kasih sudah order layanan bot VIP kami.\n\n"
-        "👋🏻 Pengen Order Cepat?\n"
-        "Transaksi mudah dan otomatis!\n"
-        "Silakan klik tombol di bawah 👇"
-    )
-
-    try:
-        bot_info = await client.get_me()
-
-        log_keyboard = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(
-                        "🛒 Hubungi Bot / Order",
-                        url=f"https://t.me/{bot_info.username}",
-                    )
-                ]
-            ]
-        )
-
-        await client.send_message(
-            chat_id=int(LOGGER_GROUP_ID),
-            text=log_text,
-            reply_markup=log_keyboard,
-        )
-
-    except Exception:
-        logger.exception(
-            "Gagal mengirim log testimoni ke grup %s",
-            LOGGER_GROUP_ID,
-        )
+    # Otomatis proses sukses pembayaran dan berikan link
+    await process_successful_payment(client, callback_query, order, transaction_id)
 
     return await callback_query.answer(
         "✅ Pembayaran berhasil!",
