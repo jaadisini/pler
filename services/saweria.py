@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import io
 import json
+import logging
 import re
 import time
 from typing import Optional
@@ -10,15 +11,12 @@ import cloudscraper25 as cloudscraper
 from bs4 import BeautifulSoup
 
 from config import SAWERIA_USER_ID
-
-# Asumsikan path QrCodeGenerator sesuai struktur project Anda
 from services.qrcode import generate_qr
-import logging
 
 logger = logging.getLogger(__name__)
 
 
-class Saweria(QrCodeGenerator):
+class Saweria:
     BACKEND = "https://backend.saweria.co"
     FRONTEND = "https://saweria.co"
 
@@ -33,7 +31,6 @@ class Saweria(QrCodeGenerator):
     }
 
     def __init__(self):
-        super().__init__()
         self.scraper = cloudscraper.create_scraper()
         self._lock = asyncio.Lock()
         self._closed = False
@@ -205,24 +202,9 @@ class Saweria(QrCodeGenerator):
         if not qr_string:
             raise RuntimeError("Saweria tidak mengembalikan QR string.")
 
-        qr_url = self.generate_stylish_qr(
-            qr_string,
-            size="700x700",
-            style=1,
-            color="000000",
-        )
-
-        qr_bytes = await self.generate(
-            data=qr_string,
-            use_dots=True,
-            glow_background=False,
-            bottom_text="SCAN ME",
-            creator_text=f"Created by: {creator_name}",
-        )
-
-        qr_stream = io.BytesIO(qr_bytes)
+        # Menggunakan fungsi generate_qr kustom yang baru
+        qr_stream = generate_qr(qr_string)
         qr_stream.name = f"{transaction_id}.png"
-        qr_stream.seek(0)
 
         normalized_payment = {
             "id": transaction_id,
@@ -236,9 +218,11 @@ class Saweria(QrCodeGenerator):
         return {
             "success": True,
             "payment": normalized_payment,
+            "transaction_id": transaction_id,
             "data": data,
-            "qr_url": qr_url,
+            "qr_url": f"https://saweria.co/qris/{transaction_id}",
             "qr_stream": qr_stream,
+            "amount": amount_raw,
         }
 
     # ==========================================
@@ -298,6 +282,22 @@ class Saweria(QrCodeGenerator):
             "payment": payment_obj,
             "data": data,
         }
+
+    # ==========================================
+    # CHECK PAID STATUS (HELPER BOOLEAN)
+    # ==========================================
+
+    async def check_paid_status(self, transaction_id: str) -> bool:
+        transaction_id = str(transaction_id or "").strip()
+        if not transaction_id:
+            return False
+
+        try:
+            result = await self.check_transaction(payment_id=transaction_id)
+            payment = result.get("payment", {})
+            return payment.get("status") == "paid"
+        except Exception:
+            return False
 
 
 saweria = Saweria()
