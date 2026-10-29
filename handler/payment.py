@@ -211,11 +211,13 @@ async def create_payment(
             f"{user.first_name} {user.last_name or ''}"
         ).strip()
 
+        # Menggunakan msg dan message secara bersamaan agar aman dari error keyword argument
         result = await saweria.create_transaction(
             user_id=str(SAWERIA_USER_ID),
             amount=total_price,
             name=user_fullname or f"User_{user.id}",
             email=f"{user.id}@telegram.org",
+            msg=f"VIP Access: {channel_names[:30]}",
             message=f"VIP Access: {channel_names[:30]}",
             creator_name="nsdev",
         )
@@ -226,7 +228,7 @@ async def create_payment(
             )
 
         transaction_id = result.get("transaction_id")
-        payment_url = result.get("qr_url") # Menggunakan qr_url sebagai URL alternatif/tampilan
+        payment_url = result.get("qr_url")
         amount = int(result.get("amount") or total_price)
         qr_stream = result.get("qr_stream")
 
@@ -301,7 +303,7 @@ async def create_payment(
         )
 
         # =====================================
-        # LOG PEMBAYARAN ADMIN (DENGAN TOMBOL ACC MANUAL)
+        # LOG PEMBAYARAN ADMIN
         # =====================================
 
         try:
@@ -374,7 +376,6 @@ async def manual_acc_payment(
             show_alert=True,
         )
 
-    # Update status order menjadi paid
     await update_order_status(transaction_id, "paid")
 
     raw_channel_ids = str(
@@ -436,7 +437,6 @@ async def manual_acc_payment(
 
     buyer_id = int(get_field(order, "user_id"))
 
-    # Kirim hasil kepada pembeli
     try:
         await client.send_message(
             chat_id=buyer_id,
@@ -449,7 +449,6 @@ async def manual_acc_payment(
             buyer_id,
         )
 
-    # Ubah pesan log admin agar tombol ACC hilang
     try:
         updated_log_text = callback_query.message.text + "\n\n✨ Status: DI-ACC MANUAL OLEH OWNER ✅"
         await callback_query.edit_message_text(
@@ -458,10 +457,6 @@ async def manual_acc_payment(
         )
     except Exception:
         pass
-
-    # =====================================
-    # LOG TESTIMONI KE GRUP
-    # =====================================
 
     waktu = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -554,12 +549,7 @@ async def check_payment(
             show_alert=True,
         )
 
-    # =====================================
-    # CEK STATUS SAWERIA API (check_paid_status)
-    # =====================================
-
     try:
-        # check_paid_status mengembalikan True jika sudah dibayar (qr_string kosong), False jika belum
         is_paid = await saweria.check_paid_status(transaction_id)
     except Exception:
         logger.exception(
@@ -577,10 +567,6 @@ async def check_payment(
             "⏳ Pembayaran belum diterima.",
             show_alert=True,
         )
-
-    # =====================================
-    # PEMBAYARAN BERHASIL
-    # =====================================
 
     await update_order_status(
         transaction_id,
@@ -645,7 +631,6 @@ async def check_payment(
         "Link undangan bersifat sekali pakai untuk setiap channel."
     )
 
-    # Kirim hasil kepada pembeli
     try:
         await callback_query.edit_message_caption(
             caption=success_text,
@@ -661,10 +646,6 @@ async def check_payment(
                 "Gagal mengirim link VIP kepada user %s",
                 callback_query.from_user.id,
             )
-
-    # =====================================
-    # LOG TESTIMONI KE GRUP
-    # =====================================
 
     user = callback_query.from_user
 
