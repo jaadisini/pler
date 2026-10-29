@@ -10,3 +10,4 @@ uvicorn
 httpx
 cloudscraper25
 bs4
+richgram
