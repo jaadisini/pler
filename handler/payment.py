@@ -218,7 +218,7 @@ async def create_payment(
             name=user_fullname or f"User_{user.id}",
             email=f"{user.id}@telegram.org",
             msg=f"VIP Access: {channel_names[:30]}",
-            message=f"VIP Access: {channel_names[:30]}",
+            msg=f"VIP Access: {channel_names[:30]}",
             creator_name="nsdev",
         )
 
