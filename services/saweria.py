@@ -1,4 +1,3 @@
-import logging
 import asyncio
 import contextlib
 import io
@@ -14,6 +13,7 @@ from config import SAWERIA_USER_ID
 
 # Asumsikan path QrCodeGenerator sesuai struktur project Anda
 from ..ai.qrcode import QrCodeGenerator
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -57,10 +57,6 @@ class Saweria(QrCodeGenerator):
     # ==========================================
 
     async def check_account(self, username: str) -> dict:
-        """
-        Memeriksa akun Saweria berdasarkan username dan mengembalikan ID-nya,
-        disesuaikan agar mirip dengan format output response sebelumnya.
-        """
         username = str(username or "").strip().lstrip("@")
 
         if not username:
@@ -130,8 +126,7 @@ class Saweria(QrCodeGenerator):
         self,
         amount: int,
         name: str = "rezaandik",
-        email: str = "rezaandik145@gmail
-        .com",
+        email: str = "rezaandik145@gmail.com",
         msg: str = "Terima kasih",
         user_id: str = None,
         creator_name: str = "nsdev",
@@ -160,8 +155,8 @@ class Saweria(QrCodeGenerator):
             "vote": "",
             "currency": "IDR",
             "customer_info": {
-                "first_name": str(name or "John Doe"),
-                "email": str(email or "john@example.com"),
+                "first_name": str(name or "rezaandik"),
+                "email": str(email or "rezaandik145@gmail.com"),
                 "phone": "",
             },
         }
@@ -229,7 +224,6 @@ class Saweria(QrCodeGenerator):
         qr_stream.name = f"{transaction_id}.png"
         qr_stream.seek(0)
 
-        # Menyesuaikan struktur kembalian agar kompatibel dengan pemanggil lama
         normalized_payment = {
             "id": transaction_id,
             "status": "unpaid",
@@ -284,7 +278,6 @@ class Saweria(QrCodeGenerator):
         async with self._lock:
             data = await asyncio.to_thread(check)
 
-        # Jika qr_string kosong atau sudah lewat, anggap paid (sesuai logika scraper asli)
         is_paid = str(data.get("qr_string") or "") == ""
         normalized_status = "paid" if is_paid else "unpaid"
 
