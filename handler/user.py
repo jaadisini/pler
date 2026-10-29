@@ -19,7 +19,7 @@ import random
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from pyrogram import Client, filters
+from pyrogram import Client, filters, enums
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 
 from app import app
@@ -43,6 +43,7 @@ from richgram import (
     rich_note,
     rich_reply,
     rich_edit,
+    rich_to_plain,
 )
 
 # ==================================
@@ -103,21 +104,55 @@ def get_main_keyboard() -> str:
     )
 
 
+# Fallback Pyrogram InlineKeyboardMarkup jika rich_reply gagal
+def get_fallback_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("List VVIP", callback_data="vip"),
+            InlineKeyboardButton("Paket Bundle 📦", callback_data="bundle"),
+        ],
+        [
+            InlineKeyboardButton("🔥 Beli Semua VIP", callback_data="buy:all"),
+        ],
+        [
+            InlineKeyboardButton("Cara Order", callback_data="help"),
+            InlineKeyboardButton("💬 Livechat Admin", callback_data="livechat"),
+        ]
+    ])
+
+
 # ==================================
-# START COMMAND (TANPA FOTO)
+# START COMMAND (TANPA FOTO & AMAN DARI ERROR)
 # ==================================
 
 
 @app.on_message(filters.command("start"))
 async def start_cmd(client: Client, message: Message):
-    user = message.from_user
-    await add_user(user_id=user.id, username=user.username)
+    try:
+        user = message.from_user
+        if user:
+            await add_user(user_id=user.id, username=user.username)
+    except Exception as e:
+        print(f"[Database Error di /start]: {e}")
 
-    await rich_reply(
-        message,
-        html_text=START_CAPTION,
-        reply_markup=get_main_keyboard(),
-    )
+    try:
+        # Coba kirim menggunakan helper rich_reply
+        await rich_reply(
+            message,
+            html_text=START_CAPTION,
+            reply_markup=get_main_keyboard(),
+        )
+    except Exception as rich_err:
+        print(f"[Richgram Error di /start, menggunakan fallback]: {rich_err}")
+        # Fallback aman menggunakan pesan teks standar Pyrogram
+        try:
+            await message.reply_text(
+                text=rich_to_plain(START_CAPTION),
+                reply_markup=get_fallback_keyboard(),
+                parse_mode=enums.ParseMode.HTML
+            )
+        except Exception as fallback_err:
+            print(f"[Critical Error di /start]: {fallback_err}")
 
 
 # ==================================
