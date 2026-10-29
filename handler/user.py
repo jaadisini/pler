@@ -1,16 +1,3 @@
-# ═══════════════════════════════════════════════════════════════
-#                     🎵 NAKA VIP PORTAL
-#
-#                   © 2026 BAD MUNDA
-#
-#                Developed with ❤️ by Bad Munda
-#
-#            Do not remove or alter the original credits.
-#
-#           Copyright © 2026 Bad Munda. All rights reserved.
-#
-#
-# ═══════════════════════════════════════════════════════════════
 
 from __future__ import annotations
 
@@ -111,9 +98,8 @@ async def start_cmd(client: Client, message: Message):
     user = message.from_user
     await add_user(user_id=user.id, username=user.username)
 
-    await message.reply_photo(
-        photo="assets/welcome.jpg",
-        caption=START_CAPTION,
+    await message.reply_text(
+        text=START_CAPTION,
         reply_markup=get_main_keyboard(),
     )
 
@@ -168,10 +154,16 @@ async def show_channels(callback_query, page: int = 1):
 
     html_kb += _row(_tg_btn("🏰 Back Home", "home", "danger"))
 
-    await callback_query.edit_message_media(
-        media=InputMediaPhoto("assets/welcome.jpg", caption=text),
-        reply_markup=html_kb,
-    )
+    try:
+        await callback_query.edit_message_media(
+            media=InputMediaPhoto("assets/welcome.jpg", caption=text),
+            reply_markup=html_kb,
+        )
+    except Exception:
+        await callback_query.edit_message_text(
+            text=text,
+            reply_markup=html_kb,
+        )
 
 
 # ==================================
@@ -239,10 +231,16 @@ async def show_bundle_menu(callback_query, page: int = 1):
 
     html_kb += _row(_tg_btn("🏰 Back Home", "home", "danger"))
 
-    await callback_query.edit_message_media(
-        media=InputMediaPhoto("assets/welcome.jpg", caption=text),
-        reply_markup=html_kb,
-    )
+    try:
+        await callback_query.edit_message_media(
+            media=InputMediaPhoto("assets/welcome.jpg", caption=text),
+            reply_markup=html_kb,
+        )
+    except Exception:
+        await callback_query.edit_message_text(
+            text=text,
+            reply_markup=html_kb,
+        )
 
 
 # ==================================
@@ -280,8 +278,8 @@ async def view_channel_detail(callback_query, channel_id: int):
             reply_markup=html_kb,
         )
     except Exception:
-        await callback_query.edit_message_media(
-            media=InputMediaPhoto("assets/welcome.jpg", caption=text),
+        await callback_query.edit_message_text(
+            text=text,
             reply_markup=html_kb,
         )
 
@@ -308,10 +306,16 @@ async def show_help(callback_query):
         + rich_note("Jika mengalami kendala, silakan hubungi admin melalui menu Livechat.", expandable=False)
     )
 
-    await callback_query.edit_message_media(
-        media=InputMediaPhoto("assets/welcome.jpg", caption=caption),
-        reply_markup=html_kb,
-    )
+    try:
+        await callback_query.edit_message_media(
+            media=InputMediaPhoto("assets/welcome.jpg", caption=caption),
+            reply_markup=html_kb,
+        )
+    except Exception:
+        await callback_query.edit_message_text(
+            text=caption,
+            reply_markup=html_kb,
+        )
 
 
 # ==================================
@@ -328,10 +332,16 @@ async def show_livechat_menu(callback_query):
         "<i>Admin akan segera membalas pesan Anda.</i>"
     )
 
-    await callback_query.edit_message_media(
-        media=InputMediaPhoto("assets/welcome.jpg", caption=caption),
-        reply_markup=html_kb,
-    )
+    try:
+        await callback_query.edit_message_media(
+            media=InputMediaPhoto("assets/welcome.jpg", caption=caption),
+            reply_markup=html_kb,
+        )
+    except Exception:
+        await callback_query.edit_message_text(
+            text=caption,
+            reply_markup=html_kb,
+        )
 
 
 @app.on_message(filters.private & ~filters.user(ADMIN_ID) & ~filters.command(["start", "myorder"]))
@@ -456,10 +466,16 @@ async def user_callback(client: Client, callback_query):
         await callback_query.answer("🔥 Menampilkan daftar VVIP Populer", show_alert=False)
 
     elif data == "home":
-        await callback_query.edit_message_media(
-            media=InputMediaPhoto("assets/welcome.jpg", caption=START_CAPTION),
-            reply_markup=get_main_keyboard(),
-        )
+        try:
+            await callback_query.edit_message_media(
+                media=InputMediaPhoto("assets/welcome.jpg", caption=START_CAPTION),
+                reply_markup=get_main_keyboard(),
+            )
+        except Exception:
+            await callback_query.edit_message_text(
+                text=START_CAPTION,
+                reply_markup=get_main_keyboard(),
+            )
 
 
 # ==================================
