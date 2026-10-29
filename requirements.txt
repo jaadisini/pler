@@ -1,4 +1,4 @@
-kurigram
+git+https://github.com/kurigram-org/kurigram
 tgcrypto
 aiohttp
 aiosqlite
