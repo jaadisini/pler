@@ -159,27 +159,32 @@ async def process_successful_payment(
         "Link undangan bersifat sekali pakai untuk setiap channel."
     )
 
-    # Kirim hasil kepada pembeli via edit pesan QR atau reply
+    # Ambil ID buyer dari order database agar aman baik diakses user maupun di-acc manual owner
+    buyer_id = int(get_field(order, "user_id"))
+
+    try:
+        await client.send_message(
+            chat_id=buyer_id,
+            text=success_text,
+            disable_web_page_preview=True,
+        )
+    except Exception:
+        logger.exception(
+            "Gagal mengirim link VIP kepada user %s",
+            buyer_id,
+        )
+
+    # Coba edit caption jika callback berasal dari chat pesan QR bot dengan user
     try:
         await callback_query.edit_message_caption(
             caption=success_text,
         )
     except Exception:
-        try:
-            await callback_query.message.reply_text(
-                success_text,
-                disable_web_page_preview=True,
-            )
-        except Exception:
-            logger.exception(
-                "Gagal mengirim link VIP kepada user %s",
-                callback_query.from_user.id,
-            )
+        pass
 
     # =====================================
     # LOG TESTIMONI KE GRUP
     # =====================================
-    user = callback_query.from_user
     waktu = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     bought_channels_str = (
@@ -196,13 +201,11 @@ async def process_successful_payment(
         "🔔 TESTIMONI — NAKA VIP\n"
         "━━━━━━━━━━━━━━━━━━\n"
         f"🗓 Tanggal: {waktu}\n"
-        f"👤 Buyer: {user.first_name} {user.last_name or ''}\n"
-        f"🆔 ID Buyer: {user.id}\n"
-        f"📨 Username: @{user.username or '-'}\n"
+        f"🆔 ID Buyer: {buyer_id}\n"
         f"🛍 VIP: {bought_channels_str}\n"
         f"🧾 Order ID: {transaction_id}\n"
         f"💰 Total: Rp {unique_amount:,}\n"
-        "🏦 Metode: Saweria (Auto/Verified)\n"
+        "🏦 Metode: Saweria (Auto / Manual ACC)\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
         "Terima kasih sudah order layanan bot VIP kami.\n\n"
         "👋🏻 Pengen Order Cepat?\n"
@@ -262,13 +265,11 @@ async def create_payment(
         )
 
     if active:
-        # Cek otomatis apakah order aktif tersebut sudah terbayar di Saweria
         active_trx_id = get_field(active, "transaction_id") or get_field(active, "order_id")
         if active_trx_id:
             try:
                 is_paid = await saweria.check_paid_status(str(active_trx_id))
                 if is_paid:
-                    # Jika ternyata sudah terbayar, langsung proses berikan link akses!
                     await process_successful_payment(client, callback_query, active, str(active_trx_id))
                     return
             except Exception:
@@ -568,7 +569,6 @@ async def check_payment(
             show_alert=True,
         )
 
-    # Otomatis proses sukses pembayaran dan berikan link
     await process_successful_payment(client, callback_query, order, transaction_id)
 
     return await callback_query.answer(
