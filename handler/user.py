@@ -1,16 +1,26 @@
+# ═══════════════════════════════════════════════════════════════
+#                     🎵 NAKA VIP PORTAL
+#
+#                   © 2026 BAD MUNDA
+#
+#                Developed with ❤️ by Bad Munda
+#
+#            Do not remove or alter the original credits.
+#
+#           Copyright © 2026 Bad Munda. All rights reserved.
+#
+#
+# ═══════════════════════════════════════════════════════════════
+
 from __future__ import annotations
 
 import os
+import random
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
-from pyrogram import Client, enums, filters
-from pyrogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    InputMediaPhoto,
-    Message,
-)
+from pyrogram import Client, filters
+from pyrogram.types import Message
 
 from app import app
 from config import OWNER_ID
@@ -24,20 +34,39 @@ from database import (
     toggle_user_bundle,
 )
 
-# Import modul rich helper/utils
-from richgram import (
-    rich_heading,
-    rich_kv_table,
-    rich_list,
-    rich_note,
-)
+# Import modul richgram helper/utils
+from richgram import rich_esc, rich_heading, rich_kv_table, rich_list, rich_note
 
 # ==================================
 # KONSTANTA & KEYBOARD UTAMA
 # ==================================
 
 ALL_VIP_PRICE = 100000  # Harga paket Beli Semua VIP
-ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))  # ⚠️ Ganti dengan ID Telegram Admin Anda
+ADMIN_ID = int(os.getenv("ADMIN_ID", "1226169879"))  # ⚠️ Ganti dengan ID Telegram Admin Anda
+
+
+def random_style() -> str:
+    """Random button colour — changes on every redraw."""
+    return random.choice(["success", "danger", "primary"])
+
+
+def _tg_btn(text: str, callback_data: str, style: Optional[str] = None) -> str:
+    style_attr = f' style="{style}"' if style else ""
+    return (
+        f'<tg-button type="callback_data"{style_attr} '
+        f'data="{callback_data}">{text}</tg-button>'
+    )
+
+
+def _url_btn(text: str, url: str, style: Optional[str] = None) -> str:
+    style_attr = f' style="{style}"' if style else ""
+    return f'<tg-button type="url"{style_attr} url="{url}">{text}</tg-button>'
+
+
+def _row(*buttons: str) -> str:
+    """One full-width row of buttons."""
+    return "<tg-button-row>" + "".join(buttons) + "</tg-button-row>"
+
 
 START_CAPTION = (
     rich_heading("Naka VIP Portal", level=2)
@@ -50,48 +79,25 @@ START_CAPTION = (
         "<b>Cara melakukan pembayaran :</b>\n"
         "• Tekan /start.\n"
         '• Tekan "List VVIP" atau "Paket Bundle"...',
-        expandable=True,
+        expands=True,
     )
 )
 
 
-def get_main_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                text="List VVIP",
-                callback_data="vip",
-                style=enums.ButtonStyle.SUCCESS,
-                icon_custom_emoji_id="5447408120752013199",
-            ),
-            InlineKeyboardButton(
-                text="Paket Bundle 📦",
-                callback_data="bundle",
-                style=enums.ButtonStyle.SUCCESS,
-                icon_custom_emoji_id="5447408120752013199",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="🔥 Beli Semua VIP",
-                callback_data="buy:all",
-                style=enums.ButtonStyle.SUCCESS,
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="Cara Order",
-                callback_data="help",
-                style=enums.ButtonStyle.PRIMARY,
-                icon_custom_emoji_id="5805434498602506971",
-            ),
-            InlineKeyboardButton(
-                text="💬 Livechat Admin",
-                callback_data="livechat",
-                style=enums.ButtonStyle.PRIMARY,
-            ),
-        ],
-    ])
+def get_main_keyboard() -> str:
+    return (
+        _row(
+            _tg_btn("List VVIP", "vip", random_style()),
+            _tg_btn("Paket Bundle 📦", "bundle", random_style()),
+        )
+        + _row(
+            _tg_btn("🔥 Beli Semua VIP", "buy:all", "success"),
+        )
+        + _row(
+            _tg_btn("Cara Order", "help", "primary"),
+            _tg_btn("💬 Livechat Admin", "livechat", "primary"),
+        )
+    )
 
 
 # ==================================
@@ -116,7 +122,7 @@ async def start_cmd(client: Client, message: Message):
 # ==================================
 
 
-async def show_channels(callback_query: CallbackQuery, page: int = 1):
+async def show_channels(callback_query, page: int = 1):
     channels = await get_channels()
 
     if not channels:
@@ -143,69 +149,27 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
         f"<emoji id=5424972470023104089>🕓</emoji> <b>{wib_now} WIB</b>"
     )
 
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                text=f"{channel['name']}",
-                icon_custom_emoji_id="5447408120752013199",
-                callback_data=f"view:{channel['id']}",
-                style=enums.ButtonStyle.PRIMARY,
-            )
-        ]
-        for channel in current_channels
-    ]
+    html_kb = ""
+    for channel in current_channels:
+        html_kb += _row(_tg_btn(f"{channel['name']}", f"view:{channel['id']}", random_style()))
 
-    keyboard.append([
-        InlineKeyboardButton(
-            text=f"🔥 Beli Semua Channel VIP",
-            callback_data="buy:all",
-            style=enums.ButtonStyle.SUCCESS,
-        )
-    ])
-
-    keyboard.append([
-        InlineKeyboardButton(
-            text="VVIP POPULER",
-            icon_custom_emoji_id="5424972470023104089",
-            callback_data="vip_populer",
-            style=enums.ButtonStyle.SUCCESS,
-        )
-    ])
+    html_kb += _row(_tg_btn("🔥 Beli Semua Channel VIP", "buy:all", "success"))
+    html_kb += _row(_tg_btn("VVIP POPULER", "vip_populer", "success"))
 
     nav_buttons = []
     if page > 1:
-        nav_buttons.append(
-            InlineKeyboardButton(
-                text="Prev",
-                icon_custom_emoji_id="5805434498602506971",
-                callback_data=f"vip:{page-1}",
-                style=enums.ButtonStyle.PRIMARY,
-            )
-        )
+        nav_buttons.append(_tg_btn("Prev", f"vip:{page-1}", "primary"))
     if page < total_pages:
-        nav_buttons.append(
-            InlineKeyboardButton(
-                text="Next",
-                icon_custom_emoji_id="5805194895261963278",
-                callback_data=f"vip:{page+1}",
-                style=enums.ButtonStyle.PRIMARY,
-            )
-        )
+        nav_buttons.append(_tg_btn("Next", f"vip:{page+1}", "primary"))
 
     if nav_buttons:
-        keyboard.append(nav_buttons)
+        html_kb += _row(*nav_buttons)
 
-    keyboard.append([
-        InlineKeyboardButton(
-            text="🏰 Back Home",
-            callback_data="home",
-            style=enums.ButtonStyle.DANGER,
-        )
-    ])
+    html_kb += _row(_tg_btn("🏰 Back Home", "home", "danger"))
 
     await callback_query.edit_message_media(
         media=InputMediaPhoto("assets/welcome.jpg", caption=text),
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        reply_markup=html_kb,
     )
 
 
@@ -214,9 +178,8 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
 # ==================================
 
 
-async def show_bundle_menu(callback_query: CallbackQuery, page: int = 1):
+async def show_bundle_menu(callback_query, page: int = 1):
     user_id = callback_query.from_user.id
-    
     selected_ids = set(await get_user_bundle(user_id))
 
     channels = await get_channels()
@@ -252,68 +215,32 @@ async def show_bundle_menu(callback_query: CallbackQuery, page: int = 1):
         f"📄 <b>Halaman {page} / {total_pages}</b>"
     )
 
-    keyboard = []
+    html_kb = ""
     for ch in current_channels:
         ch_id = ch["id"]
         is_selected = ch_id in selected_ids
         checkbox = "☑️" if is_selected else "⬜"
-        btn_style = enums.ButtonStyle.SUCCESS if is_selected else enums.ButtonStyle.PRIMARY
+        btn_style = "success" if is_selected else "primary"
 
-        keyboard.append([
-            InlineKeyboardButton(
-                text=f"{checkbox} {ch['name']} — Rp {ch['price']:,}",
-                callback_data=f"toggle_bundle:{ch_id}:{page}",
-                style=btn_style,
-            )
-        ])
+        html_kb += _row(_tg_btn(f"{checkbox} {ch['name']} — Rp {ch['price']:,}", f"toggle_bundle:{ch_id}:{page}", btn_style))
 
     nav_buttons = []
     if page > 1:
-        nav_buttons.append(
-            InlineKeyboardButton(
-                text="Prev",
-                callback_data=f"bundle:{page-1}",
-                style=enums.ButtonStyle.PRIMARY,
-            )
-        )
+        nav_buttons.append(_tg_btn("Prev", f"bundle:{page-1}", "primary"))
     if page < total_pages:
-        nav_buttons.append(
-            InlineKeyboardButton(
-                text="Next",
-                callback_data=f"bundle:{page+1}",
-                style=enums.ButtonStyle.PRIMARY,
-            )
-        )
+        nav_buttons.append(_tg_btn("Next", f"bundle:{page+1}", "primary"))
     if nav_buttons:
-        keyboard.append(nav_buttons)
+        html_kb += _row(*nav_buttons)
 
     if selected_ids:
-        keyboard.append([
-            InlineKeyboardButton(
-                text=f"💳 Checkout Bundle (Rp {total_price:,})",
-                callback_data="buy_bundle",
-                style=enums.ButtonStyle.SUCCESS,
-            )
-        ])
-        keyboard.append([
-            InlineKeyboardButton(
-                text="🧹 Reset Pilihan",
-                callback_data="clear_bundle",
-                style=enums.ButtonStyle.DANGER,
-            )
-        ])
+        html_kb += _row(_tg_btn(f"💳 Checkout Bundle (Rp {total_price:,})", "buy_bundle", "success"))
+        html_kb += _row(_tg_btn("🧹 Reset Pilihan", "clear_bundle", "danger"))
 
-    keyboard.append([
-        InlineKeyboardButton(
-            text="🏰 Back Home",
-            callback_data="home",
-            style=enums.ButtonStyle.DANGER,
-        )
-    ])
+    html_kb += _row(_tg_btn("🏰 Back Home", "home", "danger"))
 
     await callback_query.edit_message_media(
         media=InputMediaPhoto("assets/welcome.jpg", caption=text),
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        reply_markup=html_kb,
     )
 
 
@@ -322,7 +249,7 @@ async def show_bundle_menu(callback_query: CallbackQuery, page: int = 1):
 # ==================================
 
 
-async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
+async def view_channel_detail(callback_query, channel_id: int):
     channel = await get_channel(channel_id)
 
     if not channel:
@@ -337,38 +264,24 @@ async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
         + "\n\nKlik tombol di bawah untuk melanjutkan ke proses pembayaran QRIS."
     )
 
-    photo_path = channel["photo_path"] if "photo_path" in channel.keys() else None
+    photo_path = channel.get("photo_path")
     if not photo_path or (not photo_path.startswith("AgA") and not os.path.exists(photo_path)):
         photo_path = "assets/welcome.jpg"
 
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                text="Beli Sekarang",
-                icon_custom_emoji_id="5409048419211682843",
-                callback_data=f"buy:{channel['id']}",
-                style=enums.ButtonStyle.SUCCESS,
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="Kembali ke Daftar",
-                icon_custom_emoji_id="5805434498602506971",
-                callback_data="vip",
-                style=enums.ButtonStyle.DANGER,
-            )
-        ],
-    ])
+    html_kb = (
+        _row(_tg_btn("Beli Sekarang", f"buy:{channel['id']}", "success"))
+        + _row(_tg_btn("Kembali ke Daftar", "vip", "danger"))
+    )
 
     try:
         await callback_query.edit_message_media(
             media=InputMediaPhoto(photo_path, caption=text),
-            reply_markup=keyboard,
+            reply_markup=html_kb,
         )
     except Exception:
         await callback_query.edit_message_media(
             media=InputMediaPhoto("assets/welcome.jpg", caption=text),
-            reply_markup=keyboard,
+            reply_markup=html_kb,
         )
 
 
@@ -377,17 +290,8 @@ async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
 # ==================================
 
 
-async def show_help(callback_query: CallbackQuery):
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                text="Kembali",
-                icon_custom_emoji_id="5805434498602506971",
-                callback_data="home",
-                style=enums.ButtonStyle.DANGER,
-            )
-        ]
-    ])
+async def show_help(callback_query):
+    html_kb = _row(_tg_btn("Kembali", "home", "danger"))
 
     caption = (
         f"❓ {rich_heading('Pusat Bantuan / Cara Order', level=2)}\n\n"
@@ -405,7 +309,7 @@ async def show_help(callback_query: CallbackQuery):
 
     await callback_query.edit_message_media(
         media=InputMediaPhoto("assets/welcome.jpg", caption=caption),
-        reply_markup=keyboard,
+        reply_markup=html_kb,
     )
 
 
@@ -414,16 +318,8 @@ async def show_help(callback_query: CallbackQuery):
 # ==================================
 
 
-async def show_livechat_menu(callback_query: CallbackQuery):
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                text="« Kembali ke Menu Utama",
-                callback_data="home",
-                style=enums.ButtonStyle.DANGER,
-            )
-        ]
-    ])
+async def show_livechat_menu(callback_query):
+    html_kb = _row(_tg_btn("« Kembali ke Menu Utama", "home", "danger"))
 
     caption = (
         f"💬 {rich_heading('LIVECHAT DENGAN ADMIN', level=2)}\n\n"
@@ -433,11 +329,10 @@ async def show_livechat_menu(callback_query: CallbackQuery):
 
     await callback_query.edit_message_media(
         media=InputMediaPhoto("assets/welcome.jpg", caption=caption),
-        reply_markup=keyboard,
+        reply_markup=html_kb,
     )
 
 
-# Meneruskan pesan user ke admin
 @app.on_message(filters.private & ~filters.user(ADMIN_ID) & ~filters.command(["start", "myorder"]))
 async def forward_to_admin(client: Client, message: Message):
     if not OWNER_ID:
@@ -461,7 +356,6 @@ async def forward_to_admin(client: Client, message: Message):
     await message.reply_text("✅ Pesan Anda telah dikirim ke Admin. Mohon tunggu balasan selanjutnya.")
 
 
-# Balasan admin ke user (Admin mereply pesan/forward user)
 @app.on_message(filters.private & filters.user(ADMIN_ID) & filters.reply)
 async def reply_from_admin(client: Client, message: Message):
     replied_msg = message.reply_to_message
@@ -503,7 +397,7 @@ async def reply_from_admin(client: Client, message: Message):
         r"^(vip(:\d+)?|home|help|view:\d+|vip_populer|bundle(:\d+)?|toggle_bundle:\d+:\d+|buy_bundle|clear_bundle|buy:all|livechat)$"
     )
 )
-async def user_callback(client: Client, callback_query: CallbackQuery):
+async def user_callback(client: Client, callback_query):
     data = callback_query.data
     user_id = callback_query.from_user.id
     await callback_query.answer()
@@ -580,7 +474,7 @@ async def myorder_cmd(client: Client, message: Message):
         await message.reply_text("📭 Belum ada transaksi.")
         return
 
-    status = order["status"] if "status" in order.keys() else ""
+    status = order.get("status", "")
     emoji = {
         "pending": "🟡",
         "paid": "🟢",
