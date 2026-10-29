@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from pyrogram import Client, filters
-from pyrogram.types import Message
+from pyrogram.types import InputMediaPhoto, Message
 
 from app import app
 from config import OWNER_ID
@@ -35,14 +35,20 @@ from database import (
 )
 
 # Import modul richgram helper/utils
-from richgram import rich_esc, rich_heading, rich_kv_table, rich_list, rich_note
+from richgram import (
+    rich_esc,
+    rich_heading,
+    rich_kv_table,
+    rich_list,
+    rich_note,
+)
 
 # ==================================
 # KONSTANTA & KEYBOARD UTAMA
 # ==================================
 
 ALL_VIP_PRICE = 100000  # Harga paket Beli Semua VIP
-ADMIN_ID = int(os.getenv("ADMIN_ID", "1226169879"))  # ⚠️ Ganti dengan ID Telegram Admin Anda
+ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))  # ⚠️ Ganti dengan ID Telegram Admin Anda
 
 
 def random_style() -> str:
@@ -56,11 +62,6 @@ def _tg_btn(text: str, callback_data: str, style: Optional[str] = None) -> str:
         f'<tg-button type="callback_data"{style_attr} '
         f'data="{callback_data}">{text}</tg-button>'
     )
-
-
-def _url_btn(text: str, url: str, style: Optional[str] = None) -> str:
-    style_attr = f' style="{style}"' if style else ""
-    return f'<tg-button type="url"{style_attr} url="{url}">{text}</tg-button>'
 
 
 def _row(*buttons: str) -> str:
@@ -79,7 +80,7 @@ START_CAPTION = (
         "<b>Cara melakukan pembayaran :</b>\n"
         "• Tekan /start.\n"
         '• Tekan "List VVIP" atau "Paket Bundle"...',
-        expands=True,
+        expandable=True,
     )
 )
 
