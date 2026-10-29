@@ -122,7 +122,7 @@ class Saweria:
     async def create_transaction(
         self,
         amount: int,
-        name: str = "rezaandik",
+        name: str = "NakaStore",
         email: str = "rezaandik145@gmail.com",
         msg: str = "Terima kasih",
         message: str = None,
@@ -155,7 +155,7 @@ class Saweria:
             "vote": "",
             "currency": "IDR",
             "customer_info": {
-                "first_name": str(name or "rezaandik"),
+                "first_name": str(name or "NakaStore"),
                 "email": str(email or "rezaandik145@gmail.com"),
                 "phone": "",
             },
