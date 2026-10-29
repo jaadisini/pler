@@ -1,0 +1,607 @@
+from __future__ import annotations
+
+import os
+from datetime import datetime, timedelta, timezone
+
+from pyrogram import Client, enums, filters
+from pyrogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputMediaPhoto,
+    Message,
+)
+
+from app import app
+from config import OWNER_ID
+from database import (
+    add_user,
+    clear_user_bundle,
+    get_channel,
+    get_channels,
+    get_order_by_user,
+    get_user_bundle,
+    toggle_user_bundle,
+)
+
+# Import modul rich helper/utils Anda
+from richgram import (
+    rich_button,
+    rich_button_row,
+    rich_details,
+    rich_esc,
+    rich_heading,
+    rich_kv_table,
+    rich_list,
+    rich_note,
+    rich_send,
+    rich_table,
+)
+
+# ==================================
+# KONSTANTA & KEYBOARD UTAMA
+# ==================================
+
+ALL_VIP_PRICE = 100000  # Harga paket Beli Semua VIP
+ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))  # ⚠️ Ganti dengan ID Telegram Admin Anda
+
+START_CAPTION = (
+    rich_heading("Naka VIP Portal", level=2)
+    + "\n"
+    + "Hello.\n"
+    + "Silahkan Pilih Folder Sesuai Keinginan Anda.\n\n"
+    + rich_note("MASING MASING FOLDER MEMILIKI MEDIA PREMIUM, BISA DI SAVE, DAN TANPA JANGKA WAKTU (PERMANENT)", expandable=False)
+    + "\n\n"
+    + rich_note(
+        "<b>Cara melakukan pembayaran :</b>\n"
+        "• Tekan /start.\n"
+        '• Tekan "List VVIP" atau "Paket Bundle"...',
+        expandable=True,
+    )
+)
+
+
+def get_main_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                text="List VVIP",
+                callback_data="vip",
+                style=enums.ButtonStyle.SUCCESS,
+                icon_custom_emoji_id="5447408120752013199",
+            ),
+            InlineKeyboardButton(
+                text="Paket Bundle 📦",
+                callback_data="bundle",
+                style=enums.ButtonStyle.SUCCESS,
+                icon_custom_emoji_id="5447408120752013199",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔥 Beli Semua VIP",
+                callback_data="buy:all",
+                style=enums.ButtonStyle.SUCCESS,
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="Cara Order",
+                callback_data="help",
+                style=enums.ButtonStyle.PRIMARY,
+                icon_custom_emoji_id="5805434498602506971",
+            ),
+            InlineKeyboardButton(
+                text="💬 Livechat Admin",
+                callback_data="livechat",
+                style=enums.ButtonStyle.PRIMARY,
+            ),
+        ],
+    ])
+
+
+# ==================================
+# START COMMAND
+# ==================================
+
+
+@app.on_message(filters.command("start"))
+async def start_cmd(client: Client, message: Message):
+    user = message.from_user
+    await add_user(user_id=user.id, username=user.username)
+
+    await message.reply_photo(
+        photo="assets/welcome.jpg",
+        caption=START_CAPTION,
+        reply_markup=get_main_keyboard(),
+    )
+
+
+# ==================================
+# LIST CHANNEL (Paginasi)
+# ==================================
+
+
+async def show_channels(callback_query: CallbackQuery, page: int = 1):
+    channels = await get_channels()
+
+    if not channels:
+        await callback_query.answer("❌ Belum ada Channel VIP.", show_alert=True)
+        return
+
+    items_per_page = 10
+    total_channels = len(channels)
+    total_pages = (total_channels + items_per_page - 1) // items_per_page
+
+    page = max(1, min(page, total_pages))
+
+    start_idx = (page - 1) * items_per_page
+    end_idx = start_idx + items_per_page
+    current_channels = channels[start_idx:end_idx]
+
+    wib_now = datetime.now(timezone(timedelta(hours=7))).strftime("%H:%M:%S")
+
+    text = (
+        f"<emoji id=5447408120752013199>📁</emoji> {rich_heading('LIST VVIP — NAKA VIP', level=2)}\n\n"
+        f"🚀 <b>Berikut adalah daftar paket eksklusif yang kami tawarkan. "
+        f"Klik salah satu folder VVIP di tombol bawah untuk lihat detail & checkout.</b>\n"
+        f"<emoji id=5447421246172069841>📄</emoji> <b>Halaman {page} / {total_pages}</b>\n"
+        f"<emoji id=5424972470023104089>🕓</emoji> <b>{wib_now} WIB</b>"
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                text=f"{channel['name']}",
+                icon_custom_emoji_id="5447408120752013199",
+                callback_data=f"view:{channel['id']}",
+                style=enums.ButtonStyle.PRIMARY,
+            )
+        ]
+        for channel in current_channels
+    ]
+
+    keyboard.append([
+        InlineKeyboardButton(
+            text=f"🔥 Beli Semua Channel VIP",
+            callback_data="buy:all",
+            style=enums.ButtonStyle.SUCCESS,
+        )
+    ])
+
+    keyboard.append([
+        InlineKeyboardButton(
+            text="VVIP POPULER",
+            icon_custom_emoji_id="5424972470023104089",
+            callback_data="vip_populer",
+            style=enums.ButtonStyle.SUCCESS,
+        )
+    ])
+
+    nav_buttons = []
+    if page > 1:
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text="Prev",
+                icon_custom_emoji_id="5805434498602506971",
+                callback_data=f"vip:{page-1}",
+                style=enums.ButtonStyle.PRIMARY,
+            )
+        )
+    if page < total_pages:
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text="Next",
+                icon_custom_emoji_id="5805194895261963278",
+                callback_data=f"vip:{page+1}",
+                style=enums.ButtonStyle.PRIMARY,
+            )
+        )
+
+    if nav_buttons:
+        keyboard.append(nav_buttons)
+
+    keyboard.append([
+        InlineKeyboardButton(
+            text="🏰 Back Home",
+            callback_data="home",
+            style=enums.ButtonStyle.DANGER,
+        )
+    ])
+
+    await callback_query.edit_message_media(
+        media=InputMediaPhoto("assets/welcome.jpg", caption=text),
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+# ==================================
+# MENU BUNDLE (DATABASE DRIVEN)
+# ==================================
+
+
+async def show_bundle_menu(callback_query: CallbackQuery, page: int = 1):
+    user_id = callback_query.from_user.id
+    
+    selected_ids = set(await get_user_bundle(user_id))
+
+    channels = await get_channels()
+    if not channels:
+        await callback_query.answer("❌ Belum ada Channel VIP.", show_alert=True)
+        return
+
+    items_per_page = 8
+    total_channels = len(channels)
+    total_pages = (total_channels + items_per_page - 1) // items_per_page
+    page = max(1, min(page, total_pages))
+
+    start_idx = (page - 1) * items_per_page
+    end_idx = start_idx + items_per_page
+    current_channels = channels[start_idx:end_idx]
+
+    channel_map = {ch["id"]: ch for ch in channels}
+    total_price = sum(channel_map[cid]["price"] for cid in selected_ids if cid in channel_map)
+    selected_names = [channel_map[cid]["name"] for cid in selected_ids if cid in channel_map]
+
+    selected_str = (
+        "\n".join([f"• <b>{name}</b>" for name in selected_names])
+        if selected_names
+        else "<i>Belum ada channel yang dipilih</i>"
+    )
+
+    text = (
+        f"{rich_heading('CUSTOM BUNDLE — PILIH CHANNEL SENDIRI', level=2)}\n\n"
+        "Pilih channel apa saja yang ingin Anda beli dalam <b>1x pembayaran</b>.\n"
+        "Klik tombol channel di bawah untuk mencentang/membatalkan.\n\n"
+        f"📋 <b>Channel Terpilih ({len(selected_ids)}):</b>\n{selected_str}\n\n"
+        f"💰 <b>Total Harga:</b> Rp {total_price:,}\n"
+        f"📄 <b>Halaman {page} / {total_pages}</b>"
+    )
+
+    keyboard = []
+    for ch in current_channels:
+        ch_id = ch["id"]
+        is_selected = ch_id in selected_ids
+        checkbox = "☑️" if is_selected else "⬜"
+        btn_style = enums.ButtonStyle.SUCCESS if is_selected else enums.ButtonStyle.PRIMARY
+
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"{checkbox} {ch['name']} — Rp {ch['price']:,}",
+                callback_data=f"toggle_bundle:{ch_id}:{page}",
+                style=btn_style,
+            )
+        ])
+
+    nav_buttons = []
+    if page > 1:
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text="Prev",
+                callback_data=f"bundle:{page-1}",
+                style=enums.ButtonStyle.PRIMARY,
+            )
+        )
+    if page < total_pages:
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text="Next",
+                callback_data=f"bundle:{page+1}",
+                style=enums.ButtonStyle.PRIMARY,
+            )
+        )
+    if nav_buttons:
+        keyboard.append(nav_buttons)
+
+    if selected_ids:
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"💳 Checkout Bundle (Rp {total_price:,})",
+                callback_data="buy_bundle",
+                style=enums.ButtonStyle.SUCCESS,
+            )
+        ])
+        keyboard.append([
+            InlineKeyboardButton(
+                text="🧹 Reset Pilihan",
+                callback_data="clear_bundle",
+                style=enums.ButtonStyle.DANGER,
+            )
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton(
+            text="🏰 Back Home",
+            callback_data="home",
+            style=enums.ButtonStyle.DANGER,
+        )
+    ])
+
+    await callback_query.edit_message_media(
+        media=InputMediaPhoto("assets/welcome.jpg", caption=text),
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+# ==================================
+# DETAIL CHANNEL VIP
+# ==================================
+
+
+async def view_channel_detail(callback_query: CallbackQuery, channel_id: int):
+    channel = await get_channel(channel_id)
+
+    if not channel:
+        await callback_query.answer("❌ Channel tidak ditemukan.", show_alert=True)
+        return
+
+    text = (
+        f"<emoji id=5447408120752013199>📁</emoji> {rich_heading(channel['name'], level=2)}\n\n"
+        f"<emoji id=5409048419211682843>💵</emoji> <b>Harga :</b> Rp {channel['price']:,}\n"
+        f"<emoji id=5334882760735598374>📝</emoji> <b>Deskripsi :</b>\n"
+        + rich_note(channel['description'], expandable=True)
+        + "\n\nKlik tombol di bawah untuk melanjutkan ke proses pembayaran QRIS."
+    )
+
+    photo_path = channel["photo_path"] if "photo_path" in channel.keys() else None
+    if not photo_path or (not photo_path.startswith("AgA") and not os.path.exists(photo_path)):
+        photo_path = "assets/welcome.jpg"
+
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                text="Beli Sekarang",
+                icon_custom_emoji_id="5409048419211682843",
+                callback_data=f"buy:{channel['id']}",
+                style=enums.ButtonStyle.SUCCESS,
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="Kembali ke Daftar",
+                icon_custom_emoji_id="5805434498602506971",
+                callback_data="vip",
+                style=enums.ButtonStyle.DANGER,
+            )
+        ],
+    ])
+
+    try:
+        await callback_query.edit_message_media(
+            media=InputMediaPhoto(photo_path, caption=text),
+            reply_markup=keyboard,
+        )
+    except Exception:
+        await callback_query.edit_message_media(
+            media=InputMediaPhoto("assets/welcome.jpg", caption=text),
+            reply_markup=keyboard,
+        )
+
+
+# ==================================
+# HELP / CARA ORDER
+# ==================================
+
+
+async def show_help(callback_query: CallbackQuery):
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                text="Kembali",
+                icon_custom_emoji_id="5805434498602506971",
+                callback_data="home",
+                style=enums.ButtonStyle.DANGER,
+            )
+        ]
+    ])
+
+    caption = (
+        f"❓ {rich_heading('Pusat Bantuan / Cara Order', level=2)}\n\n"
+        "<b>Cara membeli VIP:</b>\n"
+        + rich_list([
+            "Tekan <b>🏷 List VVIP</b>, <b>📦 Paket Bundle</b>, atau <b>🔥 Beli Semua VIP</b>.",
+            "Pilih satu, beberapa, atau semua Channel VIP.",
+            "Lanjutkan ke proses pembayaran QRIS yang dikirim bot.",
+            "Tekan <b>🔄 Cek Pembayaran</b>.",
+            "Sistem akan otomatis memasukkan Anda ke akses Channel VIP."
+        ], ordered=True)
+        + "\n\n"
+        + rich_note("Jika mengalami kendala, silakan hubungi admin melalui menu Livechat.", expandable=False)
+    )
+
+    await callback_query.edit_message_media(
+        media=InputMediaPhoto("assets/welcome.jpg", caption=caption),
+        reply_markup=keyboard,
+    )
+
+
+# ==================================
+# LIVECHAT ADMIN HANDLERS
+# ==================================
+
+
+async def show_livechat_menu(callback_query: CallbackQuery):
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                text="« Kembali ke Menu Utama",
+                callback_data="home",
+                style=enums.ButtonStyle.DANGER,
+            )
+        ]
+    ])
+
+    caption = (
+        f"💬 {rich_heading('LIVECHAT DENGAN ADMIN', level=2)}\n\n"
+        "Silakan kirimkan pesan, pertanyaan, atau kendala Anda (bisa berupa teks, foto, atau bukti transfer) langsung di chat ini.\n\n"
+        "<i>Admin akan segera membalas pesan Anda.</i>"
+    )
+
+    await callback_query.edit_message_media(
+        media=InputMediaPhoto("assets/welcome.jpg", caption=caption),
+        reply_markup=keyboard,
+    )
+
+
+# Meneruskan pesan user ke admin
+@app.on_message(filters.private & ~filters.user(ADMIN_ID) & ~filters.command(["start", "myorder"]))
+async def forward_to_admin(client: Client, message: Message):
+    if not OWNER_ID:
+        await message.reply_text("⚠️ Livechat sedang tidak aktif (Admin ID belum diatur).")
+        return
+
+    user = message.from_user
+    forwarded = await message.forward(OWNER_ID)
+
+    await client.send_message(
+        chat_id=OWNER_ID,
+        text=(
+            f"📩 <b>Pesan Masuk dari User:</b>\n"
+            f"• Nama: {user.first_name} {user.last_name or ''}\n"
+            f"• Username: @{user.username or 'Tidak ada'}\n"
+            f"• ID: `{user.id}`\n\n"
+            f"<i>(Balas pesan ini untuk merespons user)</i>"
+        ),
+        reply_to_message_id=forwarded.id,
+    )
+    await message.reply_text("✅ Pesan Anda telah dikirim ke Admin. Mohon tunggu balasan selanjutnya.")
+
+
+# Balasan admin ke user (Admin mereply pesan/forward user)
+@app.on_message(filters.private & filters.user(ADMIN_ID) & filters.reply)
+async def reply_from_admin(client: Client, message: Message):
+    replied_msg = message.reply_to_message
+    if not replied_msg:
+        return
+
+    target_user_id = None
+
+    if replied_msg.forward_from:
+        target_user_id = replied_msg.forward_from.id
+    elif replied_msg.caption and "ID:" in replied_msg.caption:
+        try:
+            for line in replied_msg.caption.split("\n"):
+                if "ID:" in line:
+                    target_user_id = int(line.split("`")[1])
+        except Exception:
+            pass
+
+    if not target_user_id and replied_msg.reply_to_message and replied_msg.reply_to_message.forward_from:
+        target_user_id = replied_msg.reply_to_message.forward_from.id
+
+    if target_user_id:
+        try:
+            await message.copy(chat_id=target_user_id)
+            await message.reply_text("✅ Balasan berhasil dikirim ke user.", quote=True)
+        except Exception as e:
+            await message.reply_text(f"❌ Gagal mengirim pesan ke user: {e}", quote=True)
+    else:
+        await message.reply_text("⚠️ Gagal mendeteksi ID user. Pastikan Anda melakukan Reply pada pesan yang diteruskan dari user.", quote=True)
+
+
+# ==================================
+# CALLBACK ROUTER
+# ==================================
+
+
+@app.on_callback_query(
+    filters.regex(
+        r"^(vip(:\d+)?|home|help|view:\d+|vip_populer|bundle(:\d+)?|toggle_bundle:\d+:\d+|buy_bundle|clear_bundle|buy:all|livechat)$"
+    )
+)
+async def user_callback(client: Client, callback_query: CallbackQuery):
+    data = callback_query.data
+    user_id = callback_query.from_user.id
+    await callback_query.answer()
+
+    if data == "buy:all":
+        await callback_query.answer(
+            f"🚀 Melanjutkan ke pembayaran Paket Semua VIP (Rp {ALL_VIP_PRICE:,})...", 
+            show_alert=True
+        )
+
+    elif data.startswith("vip"):
+        parts = data.split(":")
+        page = int(parts[1]) if len(parts) > 1 else 1
+        await show_channels(callback_query, page)
+
+    elif data.startswith("bundle"):
+        parts = data.split(":")
+        page = int(parts[1]) if len(parts) > 1 else 1
+        await show_bundle_menu(callback_query, page)
+
+    elif data.startswith("toggle_bundle:"):
+        _, ch_id_str, page_str = data.split(":")
+        ch_id = int(ch_id_str)
+        page = int(page_str)
+
+        await toggle_user_bundle(user_id, ch_id)
+        await show_bundle_menu(callback_query, page)
+
+    elif data == "clear_bundle":
+        await clear_user_bundle(user_id)
+        await callback_query.answer("🧹 Pilihan bundle dibersihkan.")
+        await show_bundle_menu(callback_query, 1)
+
+    elif data == "buy_bundle":
+        selected_ids = await get_user_bundle(user_id)
+        if not selected_ids:
+            await callback_query.answer("⚠️ Silakan pilih minimal 1 channel!", show_alert=True)
+            return
+
+        await callback_query.answer(
+            f"🚀 Melanjutkan transaksi {len(selected_ids)} channel...", show_alert=True
+        )
+
+    elif data == "help":
+        await show_help(callback_query)
+
+    elif data == "livechat":
+        await show_livechat_menu(callback_query)
+
+    elif data.startswith("view:"):
+        channel_id = int(data.split(":")[1])
+        await view_channel_detail(callback_query, channel_id)
+
+    elif data == "vip_populer":
+        await callback_query.answer("🔥 Menampilkan daftar VVIP Populer", show_alert=False)
+
+    elif data == "home":
+        await callback_query.edit_message_media(
+            media=InputMediaPhoto("assets/welcome.jpg", caption=START_CAPTION),
+            reply_markup=get_main_keyboard(),
+        )
+
+
+# ==================================
+# MY ORDER COMMAND
+# ==================================
+
+
+@app.on_message(filters.command("myorder"))
+async def myorder_cmd(client: Client, message: Message):
+    order = await get_order_by_user(message.from_user.id)
+
+    if not order:
+        await message.reply_text("📭 Belum ada transaksi.")
+        return
+
+    status = order["status"] if "status" in order.keys() else ""
+    emoji = {
+        "pending": "🟡",
+        "paid": "🟢",
+        "expired": "🔴",
+        "cancel": "⚫",
+    }.get(status, "❔")
+
+    table_data = [
+        ("ID Transaksi", f"`{order['transaction_id']}`"),
+        ("Nominal", f"Rp {order['unique_amount']:,}"),
+        ("Status", f"{emoji} <b>{status.upper()}</b>")
+    ]
+    
+    table_content = rich_kv_table(table_data)
+
+    await message.reply_text(
+        f"📄 {rich_heading('Order Terakhir', level=3)}\n\n" + table_content
+    )
