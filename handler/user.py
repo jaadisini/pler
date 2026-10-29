@@ -1,459 +1,636 @@
-# ═══════════════════════════════════════════════════════════════
-#                    🎵 NAKA VIP PORTAL
-#
-#                  © 2026 BAD MUNDA
-#
-#                Developed with ❤️ by Bad Munda
-#
-#            Do not remove or alter the original credits.
-#
-#         Copyright © 2026 Bad Munda. All rights reserved.
-#
-#
-# ═══════════════════════════════════════════════════════════════
+from datetime import datetime
+import logging
 
-from __future__ import annotations
-
-import os
-from datetime import datetime, timedelta, timezone
-
-from pyrogram import Client, filters, enums
-from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
+from pyrogram import Client, filters
+from pyrogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
 
 from app import app
-from config import OWNER_ID
+from config import LOGGER_GROUP_ID, OWNER_ID, SAWERIA_USER_ID
 from database import (
-    add_user,
     clear_user_bundle,
+    create_order,
+    get_active_order,
     get_channel,
     get_channels,
-    get_order_by_user,
+    get_order,
     get_user_bundle,
-    toggle_user_bundle,
+    update_order_status,
 )
+from services.saweria import saweria
 
-# ==================================
-# KONSTANTA & KEYBOARD UTAMA
-# ==================================
+logger = logging.getLogger(__name__)
 
-ALL_VIP_PRICE = 100000  # Harga paket Beli Semua VIP
-ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))  # ⚠️ Ganti dengan ID Telegram Admin Anda
-
-
-def get_main_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("List VVIP", callback_data="vip"),
-            InlineKeyboardButton("Paket Bundle 📦", callback_data="bundle"),
-        ],
-        [
-            InlineKeyboardButton("🔥 Beli Semua VIP", callback_data="buy:all"),
-        ],
-        [
-            InlineKeyboardButton("Cara Order", callback_data="help"),
-            InlineKeyboardButton("💬 Livechat Admin", callback_data="livechat"),
-        ]
-    ])
+ALL_VIP_PRICE = 100000
+MAX_ERROR_LENGTH = 1000
 
 
-START_TEXT = (
-    "<b>🎵 NAKA VIP PORTAL</b>\n\n"
-    "Hello.\n"
-    "Silahkan Pilih Folder Sesuai Keinginan Anda.\n\n"
-    "📌 <i>MASING MASING FOLDER MEMILIKI MEDIA PREMIUM, BISA DI SAVE, DAN TANPA JANGKA WAKTU (PERMANENT)</i>\n\n"
-    "<b>Cara melakukan pembayaran :</b>\n"
-    "• Tekan /start.\n"
-    "• Tekan \"List VVIP\" atau \"Paket Bundle\"..."
-)
+# =====================================
+# HELPER: ERROR MESSAGE & DICT ACCESS
+# =====================================
+
+def safe_error_text(error, max_length=MAX_ERROR_LENGTH):
+    """Membatasi dan membersihkan pesan error untuk Telegram."""
+    error_text = str(error) or "Terjadi kesalahan yang tidak diketahui."
+
+    if len(error_text) > max_length:
+        error_text = error_text[:max_length] + "\n... detail error dipotong."
+
+    return error_text
 
 
-# ==================================
-# START COMMAND (TANPA FOTO)
-# ==================================
-
-
-@app.on_message(filters.command("start"))
-async def start_cmd(client: Client, message: Message):
+def get_field(obj, key, default=None):
+    """Fungsi helper untuk mengambil data dari sqlite3.Row atau dict."""
     try:
-        user = message.from_user
-        if user:
-            await add_user(user_id=user.id, username=user.username)
-    except Exception as e:
-        print(f"[Database Error di /start]: {e}")
+        if obj is None:
+            return default
+        if hasattr(obj, "keys") and key in obj.keys():
+            return obj[key]
+        elif isinstance(obj, dict):
+            return obj.get(key, default)
+        elif hasattr(obj, key):
+            return getattr(obj, key)
+    except Exception:
+        pass
+    return default
 
-    await message.reply_text(
-        text=START_TEXT,
-        reply_markup=get_main_keyboard(),
-        parse_mode=enums.ParseMode.HTML
+
+async def send_payment_error(callback_query, error):
+    """Mengirim pesan error dengan aman tanpa menyebabkan MESSAGE_TOO_LONG."""
+    logger.exception(
+        "Operasi pembayaran gagal: %s",
+        error,
     )
 
-
-# ==================================
-# LIST CHANNEL (Paginasi)
-# ==================================
-
-
-async def show_channels(callback_query, page: int = 1):
-    channels = await get_channels()
-
-    if not channels:
-        await callback_query.answer("❌ Belum ada Channel VIP.", show_alert=True)
-        return
-
-    items_per_page = 10
-    total_channels = len(channels)
-    total_pages = (total_channels + items_per_page - 1) // items_per_page
-
-    page = max(1, min(page, total_pages))
-
-    start_idx = (page - 1) * items_per_page
-    end_idx = start_idx + items_per_page
-    current_channels = channels[start_idx:end_idx]
-
-    wib_now = datetime.now(timezone(timedelta(hours=7))).strftime("%H:%M:%S")
-
-    text = (
-        f"📁 <b>LIST VVIP — NAKA VIP</b>\n\n"
-        f"🚀 <b>Berikut adalah daftar paket eksklusif yang kami tawarkan. "
-        f"Klik salah satu folder VVIP di tombol bawah untuk lihat detail & checkout.</b>\n\n"
-        f"📄 <b>Halaman {page} / {total_pages}</b>\n"
-        f"🕓 <b>{wib_now} WIB</b>"
+    message = (
+        "❌ Gagal memproses pembayaran.\n\n"
+        f"{safe_error_text(error)}"
     )
 
-    keyboard = []
-    for channel in current_channels:
-        keyboard.append([InlineKeyboardButton(f"{channel['name']}", callback_data=f"view:{channel['id']}")])
+    try:
+        await callback_query.message.reply_text(message)
+    except Exception:
+        logger.exception("Gagal mengirim pesan error ke pengguna")
 
-    keyboard.append([InlineKeyboardButton("🔥 Beli Semua Channel VIP", callback_data="buy:all")])
-    keyboard.append([InlineKeyboardButton("VVIP POPULER", callback_data="vip_populer")])
-
-    nav_buttons = []
-    if page > 1:
-        nav_buttons.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"vip:{page-1}"))
-    if page < total_pages:
-        nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"vip:{page+1}"))
-
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-
-    keyboard.append([InlineKeyboardButton("🏰 Back Home", callback_data="home")])
-
-    await callback_query.message.edit_text(
-        text=text,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode=enums.ParseMode.HTML
-    )
-
-
-# ==================================
-# MENU BUNDLE (DATABASE DRIVEN)
-# ==================================
-
-
-async def show_bundle_menu(callback_query, page: int = 1):
-    user_id = callback_query.from_user.id
-    selected_ids = set(await get_user_bundle(user_id))
-
-    channels = await get_channels()
-    if not channels:
-        await callback_query.answer("❌ Belum ada Channel VIP.", show_alert=True)
-        return
-
-    items_per_page = 8
-    total_channels = len(channels)
-    total_pages = (total_channels + items_per_page - 1) // items_per_page
-    page = max(1, min(page, total_pages))
-
-    start_idx = (page - 1) * items_per_page
-    end_idx = start_idx + items_per_page
-    current_channels = channels[start_idx:end_idx]
-
-    channel_map = {ch["id"]: ch for ch in channels}
-    total_price = sum(channel_map[cid]["price"] for cid in selected_ids if cid in channel_map)
-    selected_names = [channel_map[cid]["name"] for cid in selected_ids if cid in channel_map]
-
-    selected_str = (
-        "\n".join([f"• <b>{name}</b>" for name in selected_names])
-        if selected_names
-        else "<i>Belum ada channel yang dipilih</i>"
-    )
-
-    text = (
-        f"📦 <b>CUSTOM BUNDLE — PILIH CHANNEL SENDIRI</b>\n\n"
-        "Pilih channel apa saja yang ingin Anda beli dalam <b>1x pembayaran</b>.\n"
-        "Klik tombol channel di bawah untuk mencentang/membatalkan.\n\n"
-        f"📋 <b>Channel Terpilih ({len(selected_ids)}):</b>\n{selected_str}\n\n"
-        f"💰 <b>Total Harga:</b> Rp {total_price:,}\n"
-        f"📄 <b>Halaman {page} / {total_pages}</b>"
-    )
-
-    keyboard = []
-    for ch in current_channels:
-        ch_id = ch["id"]
-        is_selected = ch_id in selected_ids
-        checkbox = "☑️" if is_selected else "⬜"
-        keyboard.append([InlineKeyboardButton(f"{checkbox} {ch['name']} — Rp {ch['price']:,}", callback_data=f"toggle_bundle:{ch_id}:{page}")])
-
-    nav_buttons = []
-    if page > 1:
-        nav_buttons.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"bundle:{page-1}"))
-    if page < total_pages:
-        nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"bundle:{page+1}"))
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-
-    if selected_ids:
-        keyboard.append([InlineKeyboardButton(f"💳 Checkout Bundle (Rp {total_price:,})", callback_data="buy_bundle")])
-        keyboard.append([InlineKeyboardButton("🧹 Reset Pilihan", callback_data="clear_bundle")])
-
-    keyboard.append([InlineKeyboardButton("🏰 Back Home", callback_data="home")])
-
-    await callback_query.message.edit_text(
-        text=text,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode=enums.ParseMode.HTML
-    )
-
-
-# ==================================
-# DETAIL CHANNEL VIP
-# ==================================
-
-
-async def view_channel_detail(callback_query, channel_id: int):
-    channel = await get_channel(channel_id)
-
-    if not channel:
-        await callback_query.answer("❌ Channel tidak ditemukan.", show_alert=True)
-        return
-
-    text = (
-        f"📁 <b>{channel['name']}</b>\n\n"
-        f"💵 <b>Harga :</b> Rp {channel['price']:,}\n"
-        f"📝 <b>Deskripsi :</b>\n{channel['description']}\n\n"
-        "Klik tombol di bawah untuk melanjutkan ke proses pembayaran QRIS."
-    )
-
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Beli Sekarang", callback_data=f"buy:{channel['id']}")],
-        [InlineKeyboardButton("Kembali ke Daftar", callback_data="vip")]
-    ])
-
-    await callback_query.message.edit_text(
-        text=text,
-        reply_markup=keyboard,
-        parse_mode=enums.ParseMode.HTML
-    )
-
-
-# ==================================
-# HELP / CARA ORDER
-# ==================================
-
-
-async def show_help(callback_query):
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Kembali", callback_data="home")]
-    ])
-
-    caption = (
-        "❓ <b>Pusat Bantuan / Cara Order</b>\n\n"
-        "<b>Cara membeli VIP:</b>\n"
-        "1. Tekan <b>🏷 List VVIP</b>, <b>📦 Paket Bundle</b>, atau <b>🔥 Beli Semua VIP</b>.\n"
-        "2. Pilih satu, beberapa, atau semua Channel VIP.\n"
-        "3. Lanjutkan ke proses pembayaran QRIS yang dikirim bot.\n"
-        "4. Tekan <b>🔄 Cek Pembayaran</b>.\n"
-        "5. Sistem akan otomatis memasukkan Anda ke akses Channel VIP.\n\n"
-        "<i>Jika mengalami kendala, silakan hubungi admin melalui menu Livechat.</i>"
-    )
-
-    await callback_query.message.edit_text(
-        text=caption,
-        reply_markup=keyboard,
-        parse_mode=enums.ParseMode.HTML
-    )
-
-
-# ==================================
-# LIVECHAT ADMIN HANDLERS
-# ==================================
-
-
-async def show_livechat_menu(callback_query):
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("« Kembali ke Menu Utama", callback_data="home")]
-    ])
-
-    caption = (
-        "💬 <b>LIVECHAT DENGAN ADMIN</b>\n\n"
-        "Silakan kirimkan pesan, pertanyaan, atau kendala Anda (bisa berupa teks, foto, atau bukti transfer) langsung di chat ini.\n\n"
-        "<i>Admin akan segera membalas pesan Anda.</i>"
-    )
-
-    await callback_query.message.edit_text(
-        text=caption,
-        reply_markup=keyboard,
-        parse_mode=enums.ParseMode.HTML
-    )
-
-
-@app.on_message(filters.private & ~filters.user(ADMIN_ID) & ~filters.command(["start", "myorder"]))
-async def forward_to_admin(client: Client, message: Message):
-    if not OWNER_ID:
-        await message.reply_text("⚠️ Livechat sedang tidak aktif (Admin ID belum diatur).")
-        return
-
-    user = message.from_user
-    forwarded = await message.forward(OWNER_ID)
-
-    await client.send_message(
-        chat_id=OWNER_ID,
-        text=(
-            f"📩 <b>Pesan Masuk dari User:</b>\n"
-            f"• Nama: {user.first_name} {user.last_name or ''}\n"
-            f"• Username: @{user.username or 'Tidak ada'}\n"
-            f"• ID: `{user.id}`\n\n"
-            f"<i>(Balas pesan ini untuk merespons user)</i>"
-        ),
-        reply_to_message_id=forwarded.id,
-    )
-    await message.reply_text("✅ Pesan Anda telah dikirim ke Admin. Mohon tunggu balasan selanjutnya.")
-
-
-@app.on_message(filters.private & filters.user(ADMIN_ID) & filters.reply)
-async def reply_from_admin(client: Client, message: Message):
-    replied_msg = message.reply_to_message
-    if not replied_msg:
-        return
-
-    target_user_id = None
-
-    if replied_msg.forward_from:
-        target_user_id = replied_msg.forward_from.id
-    elif replied_msg.caption and "ID:" in replied_msg.caption:
         try:
-            for line in replied_msg.caption.split("\n"):
-                if "ID:" in line:
-                    target_user_id = int(line.split("`")[1])
+            await callback_query.answer(
+                "Gagal memproses pembayaran. Silakan coba lagi.",
+                show_alert=True,
+            )
         except Exception:
-            pass
+            logger.exception("Gagal menampilkan notifikasi error")
 
-    if not target_user_id and replied_msg.reply_to_message and replied_msg.reply_to_message.forward_from:
-        target_user_id = replied_msg.reply_to_message.forward_from.id
 
-    if target_user_id:
+# =====================================
+# HELPER: PROSES SUKSES PEMBAYARAN & LINK
+# =====================================
+
+async def process_successful_payment(
+    client: Client,
+    callback_query: CallbackQuery,
+    order,
+    transaction_id: str,
+):
+    """Memproses order yang sudah paid: membuat invite link, update DB, kirim pesan & testimoni."""
+    order_status = str(get_field(order, "status", "")).lower()
+
+    if order_status == "paid":
+        return
+
+    await update_order_status(transaction_id, "paid")
+
+    raw_channel_ids = str(
+        get_field(order, "channel_id", "")
+    ).split(",")
+
+    invite_links = []
+    channel_names = []
+
+    for channel_id_str in raw_channel_ids:
+        channel_id_str = channel_id_str.strip()
+
+        if not channel_id_str:
+            continue
+
         try:
-            await message.copy(chat_id=target_user_id)
-            await message.reply_text("✅ Balasan berhasil dikirim ke user.", quote=True)
-        except Exception as e:
-            await message.reply_text(f"❌ Gagal mengirim pesan ke user: {e}", quote=True)
-    else:
-        await message.reply_text("⚠️ Gagal mendeteksi ID user. Pastikan Anda melakukan Reply pada pesan yang diteruskan dari user.", quote=True)
+            channel = await get_channel(int(channel_id_str))
+        except Exception:
+            logger.exception(
+                "Gagal mengambil data channel %s",
+                channel_id_str,
+            )
+            continue
+
+        if not channel:
+            continue
+
+        try:
+            invite = await client.create_chat_invite_link(
+                chat_id=int(get_field(channel, "channel_id")),
+                member_limit=1,
+            )
+
+            ch_name = str(get_field(channel, "name", "Channel"))
+            invite_links.append(
+                f"• {ch_name}:\n"
+                f"{invite.invite_link}"
+            )
+            channel_names.append(ch_name)
+
+        except Exception:
+            logger.exception(
+                "Gagal membuat invite link channel %s",
+                channel_id_str,
+            )
+
+    invite_str = (
+        "\n\n".join(invite_links)
+        if invite_links
+        else "Hubungi admin untuk mendapatkan link akses."
+    )
+
+    success_text = (
+        "✅ PEMBAYARAN BERHASIL\n\n"
+        "Berikut link akses VIP kamu:\n\n"
+        f"{invite_str}\n\n"
+        "Link undangan bersifat sekali pakai untuk setiap channel."
+    )
+
+    # Ambil ID buyer dari order database agar aman baik diakses user maupun di-acc manual owner
+    buyer_id = int(get_field(order, "user_id"))
+
+    try:
+        await client.send_message(
+            chat_id=buyer_id,
+            text=success_text,
+            disable_web_page_preview=True,
+        )
+    except Exception:
+        logger.exception(
+            "Gagal mengirim link VIP kepada user %s",
+            buyer_id,
+        )
+
+    # Coba edit caption jika callback berasal dari chat pesan QR bot dengan user
+    try:
+        await callback_query.edit_message_caption(
+            caption=success_text,
+        )
+    except Exception:
+        pass
+
+    # =====================================
+    # LOG TESTIMONI KE GRUP
+    # =====================================
+    waktu = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    bought_channels_str = (
+        ", ".join(channel_names)
+        if channel_names
+        else str(get_field(order, "channel_id", ""))
+    )
+
+    unique_amount = int(
+        get_field(order, "unique_amount") or get_field(order, "amount") or 0
+    )
+
+    log_text = (
+        "🔔 TESTIMONI — NAKA VIP\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"🗓 Tanggal: {waktu}\n"
+        f"🆔 ID Buyer: {buyer_id}\n"
+        f"🛍 VIP: {bought_channels_str}\n"
+        f"🧾 Order ID: {transaction_id}\n"
+        f"💰 Total: Rp {unique_amount:,}\n"
+        "🏦 Metode: Saweria (Auto / Manual ACC)\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "Terima kasih sudah order layanan bot VIP kami.\n\n"
+        "👋🏻 Pengen Order Cepat?\n"
+        "Transaksi mudah dan otomatis!\n"
+        "Silakan klik tombol di bawah 👇"
+    )
+
+    try:
+        bot_info = await client.get_me()
+
+        log_keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🛒 Hubungi Bot / Order",
+                        url=f"https://t.me/{bot_info.username}",
+                    )
+                ]
+            ]
+        )
+
+        await client.send_message(
+            chat_id=int(LOGGER_GROUP_ID),
+            text=log_text,
+            reply_markup=log_keyboard,
+        )
+
+    except Exception:
+        logger.exception(
+            "Gagal mengirim log testimoni ke grup %s",
+            LOGGER_GROUP_ID,
+        )
 
 
-# ==================================
-# CALLBACK ROUTER
-# ==================================
-
+# =====================================
+# CREATE PAYMENT (SINGLE, BUNDLE & ALL)
+# =====================================
 
 @app.on_callback_query(
-    filters.regex(
-        r"^(vip(:\d+)?|home|help|view:\d+|vip_populer|bundle(:\d+)?|toggle_bundle:\d+:\d+|buy_bundle|clear_bundle|buy:all|livechat)$"
-    )
+    filters.regex(r"^(buy:\d+|buy_bundle|buy:all)$")
 )
-async def user_callback(client: Client, callback_query):
-    data = callback_query.data
-    user_id = callback_query.from_user.id
+async def create_payment(
+    client: Client,
+    callback_query: CallbackQuery,
+):
+    user = callback_query.from_user
+    data_str = callback_query.data
+
     await callback_query.answer()
 
-    if data == "buy:all":
-        await callback_query.answer(
-            f"🚀 Melanjutkan ke pembayaran Paket Semua VIP (Rp {ALL_VIP_PRICE:,})...", 
-            show_alert=True
+    try:
+        active = await get_active_order(user.id)
+    except Exception:
+        logger.exception("Gagal memeriksa order aktif user %s", user.id)
+        return await callback_query.message.reply_text(
+            "❌ Gagal memeriksa pembayaran aktif. Silakan coba lagi."
         )
 
-    elif data.startswith("vip"):
-        parts = data.split(":")
-        page = int(parts[1]) if len(parts) > 1 else 1
-        await show_channels(callback_query, page)
+    if active:
+        active_trx_id = get_field(active, "transaction_id") or get_field(active, "order_id")
+        if active_trx_id:
+            try:
+                is_paid = await saweria.check_paid_status(str(active_trx_id))
+                if is_paid:
+                    await process_successful_payment(client, callback_query, active, str(active_trx_id))
+                    return
+            except Exception:
+                pass
 
-    elif data.startswith("bundle"):
-        parts = data.split(":")
-        page = int(parts[1]) if len(parts) > 1 else 1
-        await show_bundle_menu(callback_query, page)
+        return await callback_query.message.reply_text(
+            "⚠️ Kamu masih memiliki pembayaran aktif."
+        )
 
-    elif data.startswith("toggle_bundle:"):
-        _, ch_id_str, page_str = data.split(":")
-        ch_id = int(ch_id_str)
-        page = int(page_str)
+    channels_to_buy = []
+    is_buy_all = False
+    total_price = 0
 
-        await toggle_user_bundle(user_id, ch_id)
-        await show_bundle_menu(callback_query, page)
+    if data_str == "buy:all":
+        all_channels = await get_channels()
+        if not all_channels:
+            return await callback_query.message.reply_text(
+                "❌ Belum ada Channel VIP tersedia."
+            )
+        channels_to_buy = all_channels
+        total_price = ALL_VIP_PRICE
+        is_buy_all = True
 
-    elif data == "clear_bundle":
-        await clear_user_bundle(user_id)
-        await callback_query.answer("🧹 Pilihan bundle dibersihkan.")
-        await show_bundle_menu(callback_query, 1)
+    elif data_str.startswith("buy:"):
+        channel_id = int(data_str.split(":", 1)[1])
+        channel = await get_channel(channel_id)
+        if not channel:
+            return await callback_query.message.reply_text(
+                "❌ Channel tidak ditemukan."
+            )
+        channels_to_buy.append(channel)
+        total_price = int(get_field(channel, "price", 0))
 
-    elif data == "buy_bundle":
-        selected_ids = await get_user_bundle(user_id)
+    elif data_str == "buy_bundle":
+        selected_ids = await get_user_bundle(user.id)
         if not selected_ids:
-            await callback_query.answer("⚠️ Silakan pilih minimal 1 channel!", show_alert=True)
-            return
+            return await callback_query.message.reply_text(
+                "⚠️ Silakan pilih minimal satu channel!"
+            )
+        for channel_id in selected_ids:
+            channel = await get_channel(channel_id)
+            if channel:
+                channels_to_buy.append(channel)
 
-        await callback_query.answer(
-            f"🚀 Melanjutkan transaksi {len(selected_ids)} channel...", show_alert=True
+        if not channels_to_buy:
+            return await callback_query.message.reply_text(
+                "❌ Channel pilihan tidak ditemukan."
+            )
+
+        total_price = sum(
+            int(get_field(channel, "price", 0))
+            for channel in channels_to_buy
         )
 
-    elif data == "help":
-        await show_help(callback_query)
-
-    elif data == "livechat":
-        await show_livechat_menu(callback_query)
-
-    elif data.startswith("view:"):
-        channel_id = int(data.split(":")[1])
-        await view_channel_detail(callback_query, channel_id)
-
-    elif data == "vip_populer":
-        await callback_query.answer("🔥 Menampilkan daftar VVIP Populer", show_alert=False)
-
-    elif data == "home":
-        await callback_query.message.edit_text(
-            text=START_TEXT,
-            reply_markup=get_main_keyboard(),
-            parse_mode=enums.ParseMode.HTML
+    if not channels_to_buy:
+        return await callback_query.message.reply_text(
+            "❌ Tidak ada channel yang dipilih."
         )
+
+    if total_price <= 0:
+        return await callback_query.message.reply_text(
+            "❌ Nominal pembayaran tidak valid."
+        )
+
+    channel_names = ", ".join(
+        str(get_field(channel, "name", "Channel"))
+        for channel in channels_to_buy
+    )
+
+    channel_ids_str = ",".join(
+        str(get_field(channel, "id", ""))
+        for channel in channels_to_buy
+    )
+
+    try:
+        user_fullname = (
+            f"{user.first_name} {user.last_name or ''}"
+        ).strip()
+
+        result = await saweria.create_transaction(
+            user_id=str(SAWERIA_USER_ID),
+            amount=total_price,
+            name=user_fullname or f"User_{user.id}",
+            email=f"{user.id}@telegram.org",
+            message=f"VIP Access: {channel_names[:30]}",
+            creator_name="nsdev",
+        )
+
+        if not isinstance(result, dict):
+            raise ValueError(
+                "Respons API Saweria bukan objek JSON yang valid."
+            )
+
+        transaction_id = result.get("transaction_id")
+        payment_url = result.get("qr_url")
+        amount = int(result.get("amount") or total_price)
+        qr_stream = result.get("qr_stream")
+
+        if not transaction_id:
+            raise ValueError(
+                "ID transaksi (transaction_id) tidak ditemukan dari respons Saweria."
+            )
+
+        transaction_id = str(transaction_id)
+
+        await create_order(
+            user.id,
+            user.username or "",
+            channel_ids_str,
+            transaction_id,
+            total_price,
+            amount,
+            payment_url or f"https://saweria.co/qris/{transaction_id}",
+            "-",
+        )
+
+        if data_str == "buy_bundle":
+            await clear_user_bundle(user.id)
+
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🔄 Cek Pembayaran",
+                        callback_data=f"check:{transaction_id}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "❌ Batalkan",
+                        callback_data=f"cancel:{transaction_id}",
+                    )
+                ],
+            ]
+        )
+
+        if is_buy_all:
+            package_title = (
+                "🔥 PAKET AKSES SEMUA VIP "
+                f"({len(channels_to_buy)} Channel)"
+            )
+        elif len(channels_to_buy) > 1:
+            package_title = (
+                f"📦 VIP Bundle ({len(channels_to_buy)} Channel)"
+            )
+        else:
+            package_title = f"📦 Channel: {channel_names}"
+
+        caption_text = (
+            "💳 Pembayaran VIP (Saweria)\n\n"
+            f"{package_title}\n"
+            f"📋 Detail VIP: {channel_names}\n"
+            f"💰 Nominal: Rp {amount:,}\n\n"
+            f"🆔 Invoice: {transaction_id}\n\n"
+            "Scan QR di atas untuk melakukan pembayaran. "
+            "Setelah membayar, tekan Cek Pembayaran."
+        )
+
+        await callback_query.message.reply_photo(
+            photo=qr_stream,
+            caption=caption_text,
+            reply_markup=keyboard,
+        )
+
+        try:
+            admin_log_msg = (
+                "🔔 LOG PEMBAYARAN BARU (SAWERIA)\n\n"
+                f"👤 User: {user.first_name} ({user.id})\n"
+                f"🏷 Username: @{user.username or '-'}\n"
+                f"📺 Channel/Bundle: {package_title}\n"
+                f"💰 Nominal: Rp {amount:,}\n"
+                f"🆔 Invoice: {transaction_id}"
+            )
+
+            admin_keyboard = InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "✅ ACC Manual",
+                            callback_data=f"manual_acc:{transaction_id}"
+                        )
+                    ]
+                ]
+            )
+
+            await client.send_message(
+                chat_id=OWNER_ID,
+                text=admin_log_msg,
+                reply_markup=admin_keyboard,
+            )
+
+        except Exception:
+            logger.exception(
+                "Gagal mengirim log pembayaran ke admin"
+            )
+
+    except Exception as error:
+        await send_payment_error(callback_query, error)
 
 
 # ==================================
-# MY ORDER COMMAND
+# MANUAL ACC PAYMENT (KHUSUS OWNER)
 # ==================================
 
+@app.on_callback_query(filters.regex(r"^manual_acc:"))
+async def manual_acc_payment(
+    client: Client,
+    callback_query: CallbackQuery,
+):
+    if callback_query.from_user.id != OWNER_ID:
+        return await callback_query.answer(
+            "❌ Perintah ini hanya dapat diakses oleh Owner!",
+            show_alert=True,
+        )
 
-@app.on_message(filters.command("myorder"))
-async def myorder_cmd(client: Client, message: Message):
-    order = await get_order_by_user(message.from_user.id)
+    transaction_id = callback_query.data.split(":", 1)[1]
+    await callback_query.answer()
+
+    order = await get_order(transaction_id)
 
     if not order:
-        await message.reply_text("📭 Belum ada transaksi.")
-        return
+        return await callback_query.answer(
+            "❌ Order tidak ditemukan di database.",
+            show_alert=True,
+        )
 
-    status = order.get("status", "")
-    emoji = {
-        "pending": "🟡",
-        "paid": "🟢",
-        "expired": "🔴",
-        "cancel": "⚫",
-    }.get(status, "❔")
+    order_status = str(get_field(order, "status", "")).lower()
 
-    table_content = (
-        f"• <b>ID Transaksi:</b> `{order['transaction_id']}`\n"
-        f"• <b>Nominal:</b> Rp {order['unique_amount']:,}\n"
-        f"• <b>Status:</b> {emoji} <b>{status.upper()}</b>"
+    if order_status == "paid":
+        return await callback_query.answer(
+            "✅ Pembayaran ini sudah pernah diproses sebelumnya.",
+            show_alert=True,
+        )
+
+    await process_successful_payment(client, callback_query, order, transaction_id)
+
+    try:
+        updated_log_text = callback_query.message.text + "\n\n✨ Status: DI-ACC MANUAL OLEH OWNER ✅"
+        await callback_query.edit_message_text(
+            text=updated_log_text,
+            reply_markup=None,
+        )
+    except Exception:
+        pass
+
+    return await callback_query.answer(
+        "✅ Berhasil melakukan ACC manual pembayaran!",
+        show_alert=True,
     )
 
-    await message.reply_text(
-        f"📄 <b>Order Terakhir</b>\n\n" + table_content,
-        parse_mode=enums.ParseMode.HTML
+
+# ==================================
+# CHECK PAYMENT
+# ==================================
+
+@app.on_callback_query(filters.regex(r"^check:"))
+async def check_payment(
+    client: Client,
+    callback_query: CallbackQuery,
+):
+    transaction_id = callback_query.data.split(":", 1)[1]
+
+    await callback_query.answer()
+
+    order = await get_order(transaction_id)
+
+    if not order:
+        return await callback_query.answer(
+            "❌ Order tidak ditemukan di database.",
+            show_alert=True,
+        )
+
+    order_status = str(get_field(order, "status", "")).lower()
+
+    if order_status == "paid":
+        return await callback_query.answer(
+            "✅ Pembayaran ini sudah diproses.",
+            show_alert=True,
+        )
+
+    try:
+        is_paid = await saweria.check_paid_status(transaction_id)
+    except Exception:
+        logger.exception(
+            "Gagal mengecek transaksi %s",
+            transaction_id,
+        )
+
+        return await callback_query.answer(
+            "Gagal mengecek pembayaran. Silakan coba lagi.",
+            show_alert=True,
+        )
+
+    if not is_paid:
+        return await callback_query.answer(
+            "⏳ Pembayaran belum diterima.",
+            show_alert=True,
+        )
+
+    await process_successful_payment(client, callback_query, order, transaction_id)
+
+    return await callback_query.answer(
+        "✅ Pembayaran berhasil!",
+        show_alert=True,
     )
+
+
+# ==================================
+# CANCEL PAYMENT
+# ==================================
+
+@app.on_callback_query(filters.regex(r"^cancel:"))
+async def cancel_payment(
+    client: Client,
+    callback_query: CallbackQuery,
+):
+    transaction_id = callback_query.data.split(":", 1)[1]
+
+    order = await get_order(transaction_id)
+
+    if not order:
+        return await callback_query.answer(
+            "❌ Order tidak ditemukan.",
+            show_alert=True,
+        )
+
+    order_status = str(get_field(order, "status", "")).lower()
+
+    if order_status == "paid":
+        return await callback_query.answer(
+            "Pembayaran yang sudah berhasil tidak bisa dibatalkan.",
+            show_alert=True,
+        )
+
+    try:
+        await update_order_status(
+            transaction_id,
+            "cancel",
+        )
+
+        try:
+            await callback_query.edit_message_caption(
+                caption="❌ Pembayaran dibatalkan.",
+            )
+        except Exception:
+            await callback_query.message.reply_text(
+                "❌ Pembayaran dibatalkan."
+            )
+
+        await callback_query.answer(
+            "Pembayaran dibatalkan.",
+            show_alert=True,
+        )
+
+    except Exception:
+        logger.exception(
+            "Gagal membatalkan transaksi %s",
+            transaction_id,
+        )
+
+        await callback_query.answer(
+            "Gagal membatalkan pembayaran.",
+            show_alert=True,
+        )
