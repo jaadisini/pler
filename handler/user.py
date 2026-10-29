@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from pyrogram import Client, filters
-from pyrogram.types import Message
+from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 
 from app import app
 from config import OWNER_ID
