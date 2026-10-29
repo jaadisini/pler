@@ -95,8 +95,8 @@ class Saweria:
                                 "data": {
                                     "id": str(user_id),
                                     "username": username,
-                                    **user_data
-                                }
+                                    **user_data,
+                                },
                             }
 
                 except Exception:
@@ -125,7 +125,7 @@ class Saweria:
         name: str = "rezaandik",
         email: str = "rezaandik145@gmail.com",
         msg: str = "Terima kasih",
-        message: str = None,  # Tambahkan parameter message opsional di sini
+        message: str = None,
         user_id: str = None,
         creator_name: str = "nsdev",
     ) -> dict:
@@ -144,7 +144,6 @@ class Saweria:
         if not account_id:
             raise ValueError("user_id wajib diisi.")
 
-        # Prioritaskan parameter message jika ada, jika tidak gunakan msg
         final_message = message or msg or "Terima kasih"
 
         payload = {
@@ -167,8 +166,6 @@ class Saweria:
             amount,
             account_id,
         )
-        
-        # ... (lanjutan kode berikutnya tetap sama)
 
         def create():
             self._ensure_open()
@@ -208,7 +205,6 @@ class Saweria:
         if not qr_string:
             raise RuntimeError("Saweria tidak mengembalikan QR string.")
 
-        # Menggunakan fungsi generate_qr kustom yang baru
         qr_stream = generate_qr(qr_string)
         qr_stream.name = f"{transaction_id}.png"
 
@@ -218,7 +214,7 @@ class Saweria:
             "qr_string": qr_string,
             "payment_url": f"https://saweria.co/qris/{transaction_id}",
             "amount": amount_raw,
-            **data
+            **data,
         }
 
         return {
@@ -274,7 +270,7 @@ class Saweria:
         payment_obj = {
             "id": transaction_id,
             "status": normalized_status,
-            **data
+            **data,
         }
 
         logger.info(
