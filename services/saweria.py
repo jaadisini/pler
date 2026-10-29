@@ -125,6 +125,7 @@ class Saweria:
         name: str = "rezaandik",
         email: str = "rezaandik145@gmail.com",
         msg: str = "Terima kasih",
+        message: str = None,  # Tambahkan parameter message opsional di sini
         user_id: str = None,
         creator_name: str = "nsdev",
     ) -> dict:
@@ -143,10 +144,13 @@ class Saweria:
         if not account_id:
             raise ValueError("user_id wajib diisi.")
 
+        # Prioritaskan parameter message jika ada, jika tidak gunakan msg
+        final_message = message or msg or "Terima kasih"
+
         payload = {
             "agree": True,
             "notUnderage": True,
-            "message": str(msg or "Terima kasih"),
+            "message": str(final_message),
             "amount": amount,
             "payment_type": "qris",
             "vote": "",
@@ -163,6 +167,8 @@ class Saweria:
             amount,
             account_id,
         )
+        
+        # ... (lanjutan kode berikutnya tetap sama)
 
         def create():
             self._ensure_open()
