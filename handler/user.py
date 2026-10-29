@@ -1,3 +1,16 @@
+# ═══════════════════════════════════════════════════════════════
+#                    🎵 NAKA VIP PORTAL
+#
+#                  © 2026 BAD MUNDA
+#
+#                Developed with ❤️ by Bad Munda
+#
+#            Do not remove or alter the original credits.
+#
+#         Copyright © 2026 Bad Munda. All rights reserved.
+#
+#
+# ═══════════════════════════════════════════════════════════════
 
 from __future__ import annotations
 
@@ -7,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Message 
+from pyrogram.types import Message
 
 from app import app
 from config import OWNER_ID
@@ -21,13 +34,15 @@ from database import (
     toggle_user_bundle,
 )
 
-# Import modul richgram helper/utils
+# Import modul richgram helper/utils & fungsi pengiriman/edit pesan
 from richgram import (
     rich_esc,
     rich_heading,
     rich_kv_table,
     rich_list,
     rich_note,
+    rich_reply,
+    rich_edit,
 )
 
 # ==================================
@@ -89,7 +104,7 @@ def get_main_keyboard() -> str:
 
 
 # ==================================
-# START COMMAND
+# START COMMAND (TANPA FOTO)
 # ==================================
 
 
@@ -98,8 +113,9 @@ async def start_cmd(client: Client, message: Message):
     user = message.from_user
     await add_user(user_id=user.id, username=user.username)
 
-    await message.reply_text(
-        text=START_CAPTION,
+    await rich_reply(
+        message,
+        html_text=START_CAPTION,
         reply_markup=get_main_keyboard(),
     )
 
@@ -154,16 +170,11 @@ async def show_channels(callback_query, page: int = 1):
 
     html_kb += _row(_tg_btn("🏰 Back Home", "home", "danger"))
 
-    try:
-        await callback_query.edit_message_media(
-            media=InputMediaPhoto("assets/welcome.jpg", caption=text),
-            reply_markup=html_kb,
-        )
-    except Exception:
-        await callback_query.edit_message_text(
-            text=text,
-            reply_markup=html_kb,
-        )
+    await rich_edit(
+        callback_query,
+        html_text=text,
+        reply_markup=html_kb,
+    )
 
 
 # ==================================
@@ -231,16 +242,11 @@ async def show_bundle_menu(callback_query, page: int = 1):
 
     html_kb += _row(_tg_btn("🏰 Back Home", "home", "danger"))
 
-    try:
-        await callback_query.edit_message_media(
-            media=InputMediaPhoto("assets/welcome.jpg", caption=text),
-            reply_markup=html_kb,
-        )
-    except Exception:
-        await callback_query.edit_message_text(
-            text=text,
-            reply_markup=html_kb,
-        )
+    await rich_edit(
+        callback_query,
+        html_text=text,
+        reply_markup=html_kb,
+    )
 
 
 # ==================================
@@ -263,25 +269,16 @@ async def view_channel_detail(callback_query, channel_id: int):
         + "\n\nKlik tombol di bawah untuk melanjutkan ke proses pembayaran QRIS."
     )
 
-    photo_path = channel.get("photo_path")
-    if not photo_path or (not photo_path.startswith("AgA") and not os.path.exists(photo_path)):
-        photo_path = "assets/welcome.jpg"
-
     html_kb = (
         _row(_tg_btn("Beli Sekarang", f"buy:{channel['id']}", "success"))
         + _row(_tg_btn("Kembali ke Daftar", "vip", "danger"))
     )
 
-    try:
-        await callback_query.edit_message_media(
-            media=InputMediaPhoto(photo_path, caption=text),
-            reply_markup=html_kb,
-        )
-    except Exception:
-        await callback_query.edit_message_text(
-            text=text,
-            reply_markup=html_kb,
-        )
+    await rich_edit(
+        callback_query,
+        html_text=text,
+        reply_markup=html_kb,
+    )
 
 
 # ==================================
@@ -306,16 +303,11 @@ async def show_help(callback_query):
         + rich_note("Jika mengalami kendala, silakan hubungi admin melalui menu Livechat.", expandable=False)
     )
 
-    try:
-        await callback_query.edit_message_media(
-            media=InputMediaPhoto("assets/welcome.jpg", caption=caption),
-            reply_markup=html_kb,
-        )
-    except Exception:
-        await callback_query.edit_message_text(
-            text=caption,
-            reply_markup=html_kb,
-        )
+    await rich_edit(
+        callback_query,
+        html_text=caption,
+        reply_markup=html_kb,
+    )
 
 
 # ==================================
@@ -332,16 +324,11 @@ async def show_livechat_menu(callback_query):
         "<i>Admin akan segera membalas pesan Anda.</i>"
     )
 
-    try:
-        await callback_query.edit_message_media(
-            media=InputMediaPhoto("assets/welcome.jpg", caption=caption),
-            reply_markup=html_kb,
-        )
-    except Exception:
-        await callback_query.edit_message_text(
-            text=caption,
-            reply_markup=html_kb,
-        )
+    await rich_edit(
+        callback_query,
+        html_text=caption,
+        reply_markup=html_kb,
+    )
 
 
 @app.on_message(filters.private & ~filters.user(ADMIN_ID) & ~filters.command(["start", "myorder"]))
@@ -466,16 +453,11 @@ async def user_callback(client: Client, callback_query):
         await callback_query.answer("🔥 Menampilkan daftar VVIP Populer", show_alert=False)
 
     elif data == "home":
-        try:
-            await callback_query.edit_message_media(
-                media=InputMediaPhoto("assets/welcome.jpg", caption=START_CAPTION),
-                reply_markup=get_main_keyboard(),
-            )
-        except Exception:
-            await callback_query.edit_message_text(
-                text=START_CAPTION,
-                reply_markup=get_main_keyboard(),
-            )
+        await rich_edit(
+            callback_query,
+            html_text=START_CAPTION,
+            reply_markup=get_main_keyboard(),
+        )
 
 
 # ==================================
