@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 from config import SAWERIA_USER_ID
 
 # Asumsikan path QrCodeGenerator sesuai struktur project Anda
-from ..ai.qrcode import QrCodeGenerator
+from services.qrcode import generate_qr
 import logging
 
 logger = logging.getLogger(__name__)
