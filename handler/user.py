@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from pyrogram import Client, filters
-from pyrogram.types import InputMediaPhoto, Message
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Message 
 
 from app import app
 from config import OWNER_ID
