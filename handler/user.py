@@ -15,9 +15,7 @@
 from __future__ import annotations
 
 import os
-import random
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 from pyrogram import Client, filters, enums
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
@@ -34,18 +32,6 @@ from database import (
     toggle_user_bundle,
 )
 
-# Import modul richgram helper/utils & fungsi pengiriman/edit pesan
-from richgram import (
-    rich_esc,
-    rich_heading,
-    rich_kv_table,
-    rich_list,
-    rich_note,
-    rich_reply,
-    rich_edit,
-    rich_to_plain,
-)
-
 # ==================================
 # KONSTANTA & KEYBOARD UTAMA
 # ==================================
@@ -54,58 +40,7 @@ ALL_VIP_PRICE = 100000  # Harga paket Beli Semua VIP
 ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))  # ⚠️ Ganti dengan ID Telegram Admin Anda
 
 
-def random_style() -> str:
-    """Random button colour — changes on every redraw."""
-    return random.choice(["success", "danger", "primary"])
-
-
-def _tg_btn(text: str, callback_data: str, style: Optional[str] = None) -> str:
-    style_attr = f' style="{style}"' if style else ""
-    return (
-        f'<tg-button type="callback_data"{style_attr} '
-        f'data="{callback_data}">{text}</tg-button>'
-    )
-
-
-def _row(*buttons: str) -> str:
-    """One full-width row of buttons."""
-    return "<tg-button-row>" + "".join(buttons) + "</tg-button-row>"
-
-
-START_CAPTION = (
-    rich_heading("Naka VIP Portal", level=2)
-    + "\n"
-    + "Hello.\n"
-    + "Silahkan Pilih Folder Sesuai Keinginan Anda.\n\n"
-    + rich_note("MASING MASING FOLDER MEMILIKI MEDIA PREMIUM, BISA DI SAVE, DAN TANPA JANGKA WAKTU (PERMANENT)", expandable=False)
-    + "\n\n"
-    + rich_note(
-        "<b>Cara melakukan pembayaran :</b>\n"
-        "• Tekan /start.\n"
-        '• Tekan "List VVIP" atau "Paket Bundle"...',
-        expandable=True,
-    )
-)
-
-
-def get_main_keyboard() -> str:
-    return (
-        _row(
-            _tg_btn("List VVIP", "vip", random_style()),
-            _tg_btn("Paket Bundle 📦", "bundle", random_style()),
-        )
-        + _row(
-            _tg_btn("🔥 Beli Semua VIP", "buy:all", "success"),
-        )
-        + _row(
-            _tg_btn("Cara Order", "help", "primary"),
-            _tg_btn("💬 Livechat Admin", "livechat", "primary"),
-        )
-    )
-
-
-# Fallback Pyrogram InlineKeyboardMarkup jika rich_reply gagal
-def get_fallback_keyboard() -> InlineKeyboardMarkup:
+def get_main_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("List VVIP", callback_data="vip"),
@@ -121,8 +56,19 @@ def get_fallback_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
+START_TEXT = (
+    "<b>🎵 NAKA VIP PORTAL</b>\n\n"
+    "Hello.\n"
+    "Silahkan Pilih Folder Sesuai Keinginan Anda.\n\n"
+    "📌 <i>MASING MASING FOLDER MEMILIKI MEDIA PREMIUM, BISA DI SAVE, DAN TANPA JANGKA WAKTU (PERMANENT)</i>\n\n"
+    "<b>Cara melakukan pembayaran :</b>\n"
+    "• Tekan /start.\n"
+    "• Tekan \"List VVIP\" atau \"Paket Bundle\"..."
+)
+
+
 # ==================================
-# START COMMAND (TANPA FOTO & AMAN DARI ERROR)
+# START COMMAND (TANPA FOTO)
 # ==================================
 
 
@@ -135,24 +81,11 @@ async def start_cmd(client: Client, message: Message):
     except Exception as e:
         print(f"[Database Error di /start]: {e}")
 
-    try:
-        # Coba kirim menggunakan helper rich_reply
-        await rich_reply(
-            message,
-            html_text=START_CAPTION,
-            reply_markup=get_main_keyboard(),
-        )
-    except Exception as rich_err:
-        print(f"[Richgram Error di /start, menggunakan fallback]: {rich_err}")
-        # Fallback aman menggunakan pesan teks standar Pyrogram
-        try:
-            await message.reply_text(
-                text=rich_to_plain(START_CAPTION),
-                reply_markup=get_fallback_keyboard(),
-                parse_mode=enums.ParseMode.HTML
-            )
-        except Exception as fallback_err:
-            print(f"[Critical Error di /start]: {fallback_err}")
+    await message.reply_text(
+        text=START_TEXT,
+        reply_markup=get_main_keyboard(),
+        parse_mode=enums.ParseMode.HTML
+    )
 
 
 # ==================================
@@ -180,35 +113,35 @@ async def show_channels(callback_query, page: int = 1):
     wib_now = datetime.now(timezone(timedelta(hours=7))).strftime("%H:%M:%S")
 
     text = (
-        f"<emoji id=5447408120752013199>📁</emoji> {rich_heading('LIST VVIP — NAKA VIP', level=2)}\n\n"
+        f"📁 <b>LIST VVIP — NAKA VIP</b>\n\n"
         f"🚀 <b>Berikut adalah daftar paket eksklusif yang kami tawarkan. "
-        f"Klik salah satu folder VVIP di tombol bawah untuk lihat detail & checkout.</b>\n"
-        f"<emoji id=5447421246172069841>📄</emoji> <b>Halaman {page} / {total_pages}</b>\n"
-        f"<emoji id=5424972470023104089>🕓</emoji> <b>{wib_now} WIB</b>"
+        f"Klik salah satu folder VVIP di tombol bawah untuk lihat detail & checkout.</b>\n\n"
+        f"📄 <b>Halaman {page} / {total_pages}</b>\n"
+        f"🕓 <b>{wib_now} WIB</b>"
     )
 
-    html_kb = ""
+    keyboard = []
     for channel in current_channels:
-        html_kb += _row(_tg_btn(f"{channel['name']}", f"view:{channel['id']}", random_style()))
+        keyboard.append([InlineKeyboardButton(f"{channel['name']}", callback_data=f"view:{channel['id']}")])
 
-    html_kb += _row(_tg_btn("🔥 Beli Semua Channel VIP", "buy:all", "success"))
-    html_kb += _row(_tg_btn("VVIP POPULER", "vip_populer", "success"))
+    keyboard.append([InlineKeyboardButton("🔥 Beli Semua Channel VIP", callback_data="buy:all")])
+    keyboard.append([InlineKeyboardButton("VVIP POPULER", callback_data="vip_populer")])
 
     nav_buttons = []
     if page > 1:
-        nav_buttons.append(_tg_btn("Prev", f"vip:{page-1}", "primary"))
+        nav_buttons.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"vip:{page-1}"))
     if page < total_pages:
-        nav_buttons.append(_tg_btn("Next", f"vip:{page+1}", "primary"))
+        nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"vip:{page+1}"))
 
     if nav_buttons:
-        html_kb += _row(*nav_buttons)
+        keyboard.append(nav_buttons)
 
-    html_kb += _row(_tg_btn("🏰 Back Home", "home", "danger"))
+    keyboard.append([InlineKeyboardButton("🏰 Back Home", callback_data="home")])
 
-    await rich_edit(
-        callback_query,
-        html_text=text,
-        reply_markup=html_kb,
+    await callback_query.message.edit_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode=enums.ParseMode.HTML
     )
 
 
@@ -246,7 +179,7 @@ async def show_bundle_menu(callback_query, page: int = 1):
     )
 
     text = (
-        f"{rich_heading('CUSTOM BUNDLE — PILIH CHANNEL SENDIRI', level=2)}\n\n"
+        f"📦 <b>CUSTOM BUNDLE — PILIH CHANNEL SENDIRI</b>\n\n"
         "Pilih channel apa saja yang ingin Anda beli dalam <b>1x pembayaran</b>.\n"
         "Klik tombol channel di bawah untuk mencentang/membatalkan.\n\n"
         f"📋 <b>Channel Terpilih ({len(selected_ids)}):</b>\n{selected_str}\n\n"
@@ -254,33 +187,31 @@ async def show_bundle_menu(callback_query, page: int = 1):
         f"📄 <b>Halaman {page} / {total_pages}</b>"
     )
 
-    html_kb = ""
+    keyboard = []
     for ch in current_channels:
         ch_id = ch["id"]
         is_selected = ch_id in selected_ids
         checkbox = "☑️" if is_selected else "⬜"
-        btn_style = "success" if is_selected else "primary"
-
-        html_kb += _row(_tg_btn(f"{checkbox} {ch['name']} — Rp {ch['price']:,}", f"toggle_bundle:{ch_id}:{page}", btn_style))
+        keyboard.append([InlineKeyboardButton(f"{checkbox} {ch['name']} — Rp {ch['price']:,}", callback_data=f"toggle_bundle:{ch_id}:{page}")])
 
     nav_buttons = []
     if page > 1:
-        nav_buttons.append(_tg_btn("Prev", f"bundle:{page-1}", "primary"))
+        nav_buttons.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"bundle:{page-1}"))
     if page < total_pages:
-        nav_buttons.append(_tg_btn("Next", f"bundle:{page+1}", "primary"))
+        nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"bundle:{page+1}"))
     if nav_buttons:
-        html_kb += _row(*nav_buttons)
+        keyboard.append(nav_buttons)
 
     if selected_ids:
-        html_kb += _row(_tg_btn(f"💳 Checkout Bundle (Rp {total_price:,})", "buy_bundle", "success"))
-        html_kb += _row(_tg_btn("🧹 Reset Pilihan", "clear_bundle", "danger"))
+        keyboard.append([InlineKeyboardButton(f"💳 Checkout Bundle (Rp {total_price:,})", callback_data="buy_bundle")])
+        keyboard.append([InlineKeyboardButton("🧹 Reset Pilihan", callback_data="clear_bundle")])
 
-    html_kb += _row(_tg_btn("🏰 Back Home", "home", "danger"))
+    keyboard.append([InlineKeyboardButton("🏰 Back Home", callback_data="home")])
 
-    await rich_edit(
-        callback_query,
-        html_text=text,
-        reply_markup=html_kb,
+    await callback_query.message.edit_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode=enums.ParseMode.HTML
     )
 
 
@@ -297,22 +228,21 @@ async def view_channel_detail(callback_query, channel_id: int):
         return
 
     text = (
-        f"<emoji id=5447408120752013199>📁</emoji> {rich_heading(channel['name'], level=2)}\n\n"
-        f"<emoji id=5409048419211682843>💵</emoji> <b>Harga :</b> Rp {channel['price']:,}\n"
-        f"<emoji id=5334882760735598374>📝</emoji> <b>Deskripsi :</b>\n"
-        + rich_note(channel['description'], expandable=True)
-        + "\n\nKlik tombol di bawah untuk melanjutkan ke proses pembayaran QRIS."
+        f"📁 <b>{channel['name']}</b>\n\n"
+        f"💵 <b>Harga :</b> Rp {channel['price']:,}\n"
+        f"📝 <b>Deskripsi :</b>\n{channel['description']}\n\n"
+        "Klik tombol di bawah untuk melanjutkan ke proses pembayaran QRIS."
     )
 
-    html_kb = (
-        _row(_tg_btn("Beli Sekarang", f"buy:{channel['id']}", "success"))
-        + _row(_tg_btn("Kembali ke Daftar", "vip", "danger"))
-    )
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Beli Sekarang", callback_data=f"buy:{channel['id']}")],
+        [InlineKeyboardButton("Kembali ke Daftar", callback_data="vip")]
+    ])
 
-    await rich_edit(
-        callback_query,
-        html_text=text,
-        reply_markup=html_kb,
+    await callback_query.message.edit_text(
+        text=text,
+        reply_markup=keyboard,
+        parse_mode=enums.ParseMode.HTML
     )
 
 
@@ -322,26 +252,25 @@ async def view_channel_detail(callback_query, channel_id: int):
 
 
 async def show_help(callback_query):
-    html_kb = _row(_tg_btn("Kembali", "home", "danger"))
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Kembali", callback_data="home")]
+    ])
 
     caption = (
-        f"❓ {rich_heading('Pusat Bantuan / Cara Order', level=2)}\n\n"
+        "❓ <b>Pusat Bantuan / Cara Order</b>\n\n"
         "<b>Cara membeli VIP:</b>\n"
-        + rich_list([
-            "Tekan <b>🏷 List VVIP</b>, <b>📦 Paket Bundle</b>, atau <b>🔥 Beli Semua VIP</b>.",
-            "Pilih satu, beberapa, atau semua Channel VIP.",
-            "Lanjutkan ke proses pembayaran QRIS yang dikirim bot.",
-            "Tekan <b>🔄 Cek Pembayaran</b>.",
-            "Sistem akan otomatis memasukkan Anda ke akses Channel VIP."
-        ], ordered=True)
-        + "\n\n"
-        + rich_note("Jika mengalami kendala, silakan hubungi admin melalui menu Livechat.", expandable=False)
+        "1. Tekan <b>🏷 List VVIP</b>, <b>📦 Paket Bundle</b>, atau <b>🔥 Beli Semua VIP</b>.\n"
+        "2. Pilih satu, beberapa, atau semua Channel VIP.\n"
+        "3. Lanjutkan ke proses pembayaran QRIS yang dikirim bot.\n"
+        "4. Tekan <b>🔄 Cek Pembayaran</b>.\n"
+        "5. Sistem akan otomatis memasukkan Anda ke akses Channel VIP.\n\n"
+        "<i>Jika mengalami kendala, silakan hubungi admin melalui menu Livechat.</i>"
     )
 
-    await rich_edit(
-        callback_query,
-        html_text=caption,
-        reply_markup=html_kb,
+    await callback_query.message.edit_text(
+        text=caption,
+        reply_markup=keyboard,
+        parse_mode=enums.ParseMode.HTML
     )
 
 
@@ -351,18 +280,20 @@ async def show_help(callback_query):
 
 
 async def show_livechat_menu(callback_query):
-    html_kb = _row(_tg_btn("« Kembali ke Menu Utama", "home", "danger"))
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("« Kembali ke Menu Utama", callback_data="home")]
+    ])
 
     caption = (
-        f"💬 {rich_heading('LIVECHAT DENGAN ADMIN', level=2)}\n\n"
+        "💬 <b>LIVECHAT DENGAN ADMIN</b>\n\n"
         "Silakan kirimkan pesan, pertanyaan, atau kendala Anda (bisa berupa teks, foto, atau bukti transfer) langsung di chat ini.\n\n"
         "<i>Admin akan segera membalas pesan Anda.</i>"
     )
 
-    await rich_edit(
-        callback_query,
-        html_text=caption,
-        reply_markup=html_kb,
+    await callback_query.message.edit_text(
+        text=caption,
+        reply_markup=keyboard,
+        parse_mode=enums.ParseMode.HTML
     )
 
 
@@ -488,10 +419,10 @@ async def user_callback(client: Client, callback_query):
         await callback_query.answer("🔥 Menampilkan daftar VVIP Populer", show_alert=False)
 
     elif data == "home":
-        await rich_edit(
-            callback_query,
-            html_text=START_CAPTION,
+        await callback_query.message.edit_text(
+            text=START_TEXT,
             reply_markup=get_main_keyboard(),
+            parse_mode=enums.ParseMode.HTML
         )
 
 
@@ -516,14 +447,13 @@ async def myorder_cmd(client: Client, message: Message):
         "cancel": "⚫",
     }.get(status, "❔")
 
-    table_data = [
-        ("ID Transaksi", f"`{order['transaction_id']}`"),
-        ("Nominal", f"Rp {order['unique_amount']:,}"),
-        ("Status", f"{emoji} <b>{status.upper()}</b>")
-    ]
-    
-    table_content = rich_kv_table(table_data)
+    table_content = (
+        f"• <b>ID Transaksi:</b> `{order['transaction_id']}`\n"
+        f"• <b>Nominal:</b> Rp {order['unique_amount']:,}\n"
+        f"• <b>Status:</b> {emoji} <b>{status.upper()}</b>"
+    )
 
     await message.reply_text(
-        f"📄 {rich_heading('Order Terakhir', level=3)}\n\n" + table_content
+        f"📄 <b>Order Terakhir</b>\n\n" + table_content,
+        parse_mode=enums.ParseMode.HTML
     )
