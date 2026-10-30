@@ -29,14 +29,17 @@ from database import (
 ALL_VIP_PRICE = 100000  # Harga paket Beli Semua VIP
 ADMIN_ID = int(os.getenv("ADMIN_ID", "1226169879"))  # ⚠️ Ganti dengan ID Telegram Admin Anda
 
-START_CAPTION = (
-    "Hello.\n"
-    "Silahkan Pilih Folder Sesuai Keinginan Anda.\n\n"
-    "<blockquote>MASING MASING FOLDER MEMILIKI MEDIA PREMIUM, BISA DI SAVE, DAN TANPA JANGKA WAKTU (PERMANENT)</blockquote>\n\n"
-    "<blockquote>Cara melakukan pembayaran :\n"
-    "• Tekan /start.\n"
-    '• Tekan "Lihat Daftar Vip"...</blockquote>'
-)
+
+def get_start_caption(user) -> str:
+    name = user.first_name if user and user.first_name else "Kak"
+    return (
+        f"Hello, <b>{name}</b> 👋\n"
+        "Silahkan Pilih Folder Sesuai Keinginan Anda.\n\n"
+        "<blockquote>MASING MASING FOLDER MEMILIKI MEDIA PREMIUM, BISA DI SAVE, DAN TANPA JANGKA WAKTU (PERMANENT)</blockquote>\n\n"
+        "<blockquote>Cara melakukan pembayaran :\n"
+        "• Tekan /start.\n"
+        '• Tekan "Lihat Daftar Vip"...</blockquote>'
+    )
 
 
 def get_main_keyboard() -> InlineKeyboardMarkup:
@@ -83,7 +86,7 @@ async def start_cmd(client: Client, message: Message):
 
     await message.reply_photo(
         photo="assets/welcome.jpg",
-        caption=START_CAPTION,
+        caption=get_start_caption(user),
         reply_markup=get_main_keyboard(),
     )
 
@@ -469,7 +472,8 @@ async def reply_from_admin(client: Client, message: Message):
 )
 async def user_callback(client: Client, callback_query: CallbackQuery):
     data = callback_query.data
-    user_id = callback_query.from_user.id
+    user = callback_query.from_user
+    user_id = user.id
     await callback_query.answer()
 
     if data == "buy:all":
@@ -523,7 +527,7 @@ async def user_callback(client: Client, callback_query: CallbackQuery):
 
     elif data == "home":
         await callback_query.edit_message_media(
-            media=InputMediaPhoto("assets/welcome.jpg", caption=START_CAPTION),
+            media=InputMediaPhoto("assets/welcome.jpg", caption=get_start_caption(user)),
             reply_markup=get_main_keyboard(),
         )
 
