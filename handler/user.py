@@ -27,7 +27,7 @@ from database import (
 # ==================================
 
 ALL_VIP_PRICE = 100000  # Harga paket Beli Semua VIP
-ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))  # ⚠️ Ganti dengan ID Telegram Admin Anda
+ADMIN_ID = int(os.getenv("ADMIN_ID", "1226169879"))  # ⚠️ Ganti dengan ID Telegram Admin Anda
 
 START_CAPTION = (
     "Hello.\n"
