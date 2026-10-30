@@ -20,6 +20,7 @@ from database import (
     get_order_by_user,
     get_user_bundle,
     toggle_user_bundle,
+    update_channel_price,  # 👈 Fungsi database untuk update harga channel satuan
 )
 
 # ==================================
@@ -57,13 +58,6 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
-                text="🔥 Beli Semua VIP",
-                callback_data="buy:all",
-                style=enums.ButtonStyle.SUCCESS,
-            ),
-        ],
-        [
-            InlineKeyboardButton(
                 text="Cara Order",
                 callback_data="help",
                 style=enums.ButtonStyle.PRIMARY,
@@ -93,6 +87,67 @@ async def start_cmd(client: Client, message: Message):
         caption=START_CAPTION,
         reply_markup=get_main_keyboard(),
     )
+
+
+# ==================================
+# COMMAND OWNER / ADMIN: UBAH HARGA
+# ==================================
+
+
+@app.on_message(filters.command("setharga") & filters.user(ADMIN_ID))
+async def setharga_cmd(client: Client, message: Message):
+    """
+    Format Penggunaan:
+    1. Ubah harga channel satuan: /setharga <id_channel> <harga_baru>
+       Contoh: /setharga 1 50000
+    2. Ubah harga Beli Semua VIP: /setharga all <harga_baru>
+       Contoh: /setharga all 150000
+    """
+    args = message.text.split()
+    if len(args) < 3:
+        await message.reply_text(
+            "⚠️ <b>Format salah!</b>\n\n"
+            "Gunakan format berikut:\n"
+            "• Channel Satuan: <code>/setharga [id_channel] [harga_baru]</code>\n"
+            "• Paket Semua VIP: <code>/setharga all [harga_baru]</code>\n\n"
+            "Contoh: <code>/setharga 1 50000</code> atau <code>/setharga all 150000</code>",
+            quote=True
+        )
+        return
+
+    target = args[1]
+    new_price_str = args[2]
+
+    if not new_price_str.isdigit():
+        await message.reply_text("❌ Harga harus berupa angka (integer)!", quote=True)
+        return
+
+    new_price = int(new_price_str)
+
+    if target.lower() == "all":
+        global ALL_VIP_PRICE
+        ALL_VIP_PRICE = new_price
+        await message.reply_text(f"✅ Berhasil mengubah harga <b>🔥 Beli Semua VIP</b> menjadi: <b>Rp {new_price:,}</b>", quote=True)
+    
+    elif target.isdigit():
+        channel_id = int(target)
+        channel = await get_channel(channel_id)
+        if not channel:
+            await message.reply_text(f"❌ Channel dengan ID `{channel_id}` tidak ditemukan di database.", quote=True)
+            return
+
+        success = await update_channel_price(channel_id, new_price)
+        if success is not False:
+            await message.reply_text(
+                f"✅ Berhasil memperbarui harga channel!\n\n"
+                f"📁 <b>{channel['name']}</b>\n"
+                f"💰 Harga Baru: <b>Rp {new_price:,}</b>",
+                quote=True
+            )
+        else:
+            await message.reply_text("❌ Gagal menyimpan perubahan harga ke database.", quote=True)
+    else:
+        await message.reply_text("❌ Target tidak dikenali. Gunakan ID channel berupa angka atau ketik `all`.", quote=True)
 
 
 # ==================================
@@ -138,23 +193,6 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
         ]
         for channel in current_channels
     ]
-
-    keyboard.append([
-        InlineKeyboardButton(
-            text=f"🔥 Beli Semua Channel VIP",
-            callback_data="buy:all",
-            style=enums.ButtonStyle.SUCCESS,
-        )
-    ])
-
-    keyboard.append([
-        InlineKeyboardButton(
-            text="VVIP POPULER",
-            icon_custom_emoji_id="5424972470023104089",
-            callback_data="vip_populer",
-            style=enums.ButtonStyle.SUCCESS,
-        )
-    ])
 
     nav_buttons = []
     if page > 1:
@@ -375,8 +413,8 @@ async def show_help(callback_query: CallbackQuery):
     caption = (
         "❓ <b>Pusat Bantuan / Cara Order</b>\n\n"
         "Cara membeli VIP:\n\n"
-        "1. Tekan <b>🏷 List VVIP</b>, <b>📦 Paket Bundle</b>, atau <b>🔥 Beli Semua VIP</b>.\n"
-        "2. Pilih satu, beberapa, atau semua Channel VIP.\n"
+        "1. Tekan <b>🏷 List VVIP</b> atau <b>📦 Paket Bundle</b>.\n"
+        "2. Pilih satu atau beberapa Channel VIP.\n"
         "3. Lanjutkan ke proses pembayaran QRIS yang dikirim bot.\n"
         "4. Tekan <b>🔄 Cek Pembayaran</b>.\n"
         "5. Sistem akan otomatis memasukkan Anda ke akses Channel VIP.\n\n"
