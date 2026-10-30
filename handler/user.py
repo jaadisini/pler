@@ -54,14 +54,7 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
                 style=enums.ButtonStyle.SUCCESS,
                 icon_custom_emoji_id="5447408120752013199",
             ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="🔥 Beli Semua VIP",
-                callback_data="buy:all",
-                style=enums.ButtonStyle.SUCCESS,
-            ),
-        ],
+        ],    
         [
             InlineKeyboardButton(
                 text="Cara Order",
@@ -143,15 +136,6 @@ async def show_channels(callback_query: CallbackQuery, page: int = 1):
         InlineKeyboardButton(
             text=f"🔥 Beli Semua Channel VIP",
             callback_data="buy:all",
-            style=enums.ButtonStyle.SUCCESS,
-        )
-    ])
-
-    keyboard.append([
-        InlineKeyboardButton(
-            text="VVIP POPULER",
-            icon_custom_emoji_id="5424972470023104089",
-            callback_data="vip_populer",
             style=enums.ButtonStyle.SUCCESS,
         )
     ])
@@ -480,7 +464,7 @@ async def reply_from_admin(client: Client, message: Message):
 
 @app.on_callback_query(
     filters.regex(
-        r"^(vip(:\d+)?|home|help|view:\d+|vip_populer|bundle(:\d+)?|toggle_bundle:\d+:\d+|buy_bundle|clear_bundle|buy:all|livechat)$"
+        r"^(vip(:\d+)?|home|help|view:\d+|bundle(:\d+)?|toggle_bundle:\d+:\d+|buy_bundle|clear_bundle|buy:all|livechat)$"
     )
 )
 async def user_callback(client: Client, callback_query: CallbackQuery):
@@ -536,9 +520,6 @@ async def user_callback(client: Client, callback_query: CallbackQuery):
     elif data.startswith("view:"):
         channel_id = int(data.split(":")[1])
         await view_channel_detail(callback_query, channel_id)
-
-    elif data == "vip_populer":
-        await callback_query.answer("🔥 Menampilkan daftar VVIP Populer", show_alert=False)
 
     elif data == "home":
         await callback_query.edit_message_media(
